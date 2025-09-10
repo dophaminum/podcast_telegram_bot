@@ -86,26 +86,4 @@
     </script>
 </body>
 </html>
-```После внесения изменений **не забудьте сохранить (Commit & Push) их на GitHub**, чтобы они обновились по вашей ссылке.
 
----
-
-### Шаг 3: Обновление `database.py` и `bot.py`
-
-#### 3.1. Добавляем одну функцию в `database.py`
-
-Нам нужна функция, которая будет получать всю информацию о *конкретном* файле по его ID. Добавьте эту функцию в конец файла `database.py`:
-
-```python
-def get_public_file_by_id(file_id):
-    """Возвращает все данные одного файла по его ID."""
-    conn = sqlite3.connect(DB_NAME)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-    
-    cursor.execute("SELECT * FROM public_files WHERE id = ?", (file_id,))
-    file_data = cursor.fetchone()
-    
-    conn.close()
-    
-    return dict(file_data) if file_data else None

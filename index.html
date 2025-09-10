@@ -2,62 +2,110 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Мое Первое Web App</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Плеер</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            background-color: var(--tg-theme-bg-color, #ffffff); /* Используем цвет темы из Telegram */
-            color: var(--tg-theme-text-color, #000000); /* Используем цвет текста из Telegram */
-            text-align: center;
-            padding: 20px;
+            background-color: var(--tg-theme-bg-color, #222);
+            color: var(--tg-theme-text-color, #fff);
+            margin: 0;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            box-sizing: border-box;
         }
-        button {
-            background-color: var(--tg-theme-button-color, #007bff);
-            color: var(--tg-theme-button-text-color, #ffffff);
-            border: none;
-            padding: 10px 20px;
-            border-radius: 5px;
-            cursor: pointer;
+        #title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+        audio {
+            width: 100%;
+            max-width: 400px;
+        }
+        #status {
+            margin-top: 20px;
+            font-size: 14px;
+            color: #aaa;
         }
     </style>
 </head>
 <body>
 
-    <h1>Привет из Web App!</h1>
+    <div id="title">Загрузка аудио...</div>
+    <audio id="player" controls></audio>
+    <div id="status"></div>
 
-    <div id="user-info">Загрузка данных...</div>
-
-    <br>
-    <button id="close-button">Закрыть</button>
-
-
-    <!-- САМЫЙ ВАЖНЫЙ СКРИПТ! Он соединяет страницу с Telegram -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-
     <script>
-        // Получаем объект WebApp
         const tg = window.Telegram.WebApp;
-
-        // Сообщаем Telegram, что приложение готово
         tg.ready();
 
-        // Отображаем информацию о пользователе
-        const userInfoDiv = document.getElementById('user-info');
-        if (tg.initDataUnsafe.user) {
-            const user = tg.initDataUnsafe.user;
-            userInfoDiv.innerHTML = `Рад тебя видеть, <b>${user.first_name || ''} ${user.last_name || ''}</b>! (@${user.username || 'N/A'})`;
-        } else {
-            userInfoDiv.innerText = 'Не удалось получить информацию о пользователе.';
+        const titleDiv = document.getElementById('title');
+        const player = document.getElementById('player');
+        const statusDiv = document.getElementById('status');
+
+        try {
+            // 1. Получаем параметры из URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const fileUrl = urlParams.get('file_url');
+            const fileName = urlParams.get('file_name') || 'Аудиозапись';
+            const startTime = parseInt(urlParams.get('start_time') || '0', 10);
+
+            if (!fileUrl) {
+                throw new Error("Аудиофайл не указан.");
+            }
+            
+            titleDiv.innerText = fileName;
+            player.src = fileUrl;
+
+            // 2. Ждем, пока плеер будет готов к воспроизведению
+            player.addEventListener('canplaythrough', () => {
+                statusDiv.innerText = 'Аудио загружено. Устанавливаем время...';
+                
+                // 3. Устанавливаем нужное время и запускаем
+                player.currentTime = startTime;
+                player.play();
+                statusDiv.innerText = 'Воспроизведение...';
+            }, { once: true }); // Cработает только один раз
+
+            player.addEventListener('error', () => {
+                const errorMessage = `Ошибка загрузки аудио. Код: ${player.error.code}. Убедитесь, что ngrok запущен и ссылка верна.`;
+                statusDiv.innerText = errorMessage;
+                tg.showAlert(errorMessage);
+            });
+
+        } catch (e) {
+            statusDiv.innerText = `Ошибка: ${e.message}`;
+            tg.showAlert(`Критическая ошибка: ${e.message}`);
         }
-
-        // Находим кнопку и добавляем обработчик для закрытия Web App
-        const closeButton = document.getElementById('close-button');
-        closeButton.addEventListener('click', () => {
-            // Метод для закрытия окна Web App
-            tg.close();
-        });
-
     </script>
 </body>
 </html>
+```После внесения изменений **не забудьте сохранить (Commit & Push) их на GitHub**, чтобы они обновились по вашей ссылке.
+
+---
+
+### Шаг 3: Обновление `database.py` и `bot.py`
+
+#### 3.1. Добавляем одну функцию в `database.py`
+
+Нам нужна функция, которая будет получать всю информацию о *конкретном* файле по его ID. Добавьте эту функцию в конец файла `database.py`:
+
+```python
+def get_public_file_by_id(file_id):
+    """Возвращает все данные одного файла по его ID."""
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT * FROM public_files WHERE id = ?", (file_id,))
+    file_data = cursor.fetchone()
+    
+    conn.close()
+    
+    return dict(file_data) if file_data else None

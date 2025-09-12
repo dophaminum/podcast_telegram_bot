@@ -5,10 +5,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Плеер</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: var(--tg-theme-bg-color, #222); color: var(--tg-theme-text-color, #fff); margin: 0; padding: 15px; display: flex; flex-direction: column; align-items: center; height: 100vh; box-sizing: border-box; }
-        #title { font-size: 18px; font-weight: bold; margin-bottom: 20px; text-align: center; }
-        audio { width: 100%; max-width: 400px; }
-        /* --- НОВЫЙ СТИЛЬ ДЛЯ ОТОБРАЖЕНИЯ ВРЕМЕНИ --- */
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
+            background-color: var(--tg-theme-bg-color, #222); 
+            color: var(--tg-theme-text-color, #fff); 
+            margin: 0; 
+            padding: 15px; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            height: 100vh; 
+            box-sizing: border-box; 
+        }
+        #title { 
+            font-size: 18px; 
+            font-weight: bold; 
+            margin-bottom: 20px; 
+            text-align: center; 
+        }
+        audio { 
+            width: 100%; 
+            max-width: 400px; 
+        }
         #time-display {
             font-family: 'Courier New', Courier, monospace;
             font-size: 16px;
@@ -22,7 +40,6 @@
 
     <div id="title">Загрузка аудио...</div>
     <audio id="player" controls></audio>
-    <!-- --- НОВЫЙ ЭЛЕМЕНТ ДЛЯ ВРЕМЕНИ --- -->
     <div id="time-display">--:-- / --:--</div>
     
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -33,13 +50,25 @@
 
         const titleDiv = document.getElementById('title');
         const player = document.getElementById('player');
-        // --- ПОЛУЧАЕМ НОВЫЙ ЭЛЕМЕНТ ---
         const timeDisplay = document.getElementById('time-display');
         
         let fileId = null;
         let storageKey = null;
+        let lastUpdateTime = 0; // Для отправки данных боту
 
-        // --- НОВАЯ ФУНКЦИЯ ДЛЯ ФОРМАТИРОВАНИЯ ВРЕМЕНИ ---
+        // Функция для отправки данных боту (вспомогательная)
+        function sendProgressUpdate(isFinished = false) {
+            if (!fileId) return;
+            const currentTime = Math.floor(player.currentTime);
+            const dataToSend = {
+                file_id: fileId,
+                position: currentTime,
+                is_finished: isFinished,
+            };
+            tg.sendData(JSON.stringify(dataToSend));
+        }
+
+        // Функция для красивого отображения времени
         function formatTime(seconds) {
             if (isNaN(seconds) || seconds < 0) {
                 return "--:--";
@@ -54,40 +83,55 @@
             fileId = urlParams.get('file_id');
             const fileUrl = urlParams.get('file_url');
             const fileName = urlParams.get('file_name') || 'Аудиозапись';
-            const startTimeFromParam = parseInt(urlParams.get('start_time') || '0', 10);
-            // Получаем общую длительность из параметров
             const totalDuration = parseInt(urlParams.get('duration') || '0', 10);
-
+            
             if (!fileUrl || !fileId) {
-                throw new Error("ID файла или URL не указаны.");
+                throw new Error("ID или URL файла не указаны.");
             }
             
+            // Основная логика с localStorage (главный источник правды)
             storageKey = `progress_${fileId}`; 
             const savedProgress = localStorage.getItem(storageKey);
             let lastPosition = savedProgress ? parseInt(savedProgress, 10) : 0;
             
             titleDiv.innerText = fileName;
             player.src = fileUrl;
-            // Сразу отображаем общую длительность
             timeDisplay.innerText = `${formatTime(lastPosition)} / ${formatTime(totalDuration)}`;
 
+            // ОБРАБОТЧИКИ СОБЫТИЙ
             player.addEventListener('canplaythrough', () => {
-                player.currentTime = startTimeFromParam > 0 ? startTimeFromParam : lastPosition;
+                // Всегда доверяем localStorage, а не данным от бота
+                player.currentTime = lastPosition;
                 player.play();
             }, { once: true });
 
             player.addEventListener('timeupdate', () => {
                 const currentTime = Math.floor(player.currentTime);
-                // Обновляем отображение времени
+                // 1. Обновляем время на экране
                 timeDisplay.innerText = `${formatTime(currentTime)} / ${formatTime(totalDuration)}`;
-                // Сохраняем прогресс в localStorage
+
+                // 2. Надежно сохраняем в localStorage
                 localStorage.setItem(storageKey, currentTime);
+
+                // 3. Пытаемся отправить данные боту для отображения (не критично, если не дойдет)
+                const now = Date.now();
+                if (now - lastUpdateTime > 5000) {
+                    sendProgressUpdate();
+                    lastUpdateTime = now;
+                }
             });
 
             player.addEventListener('ended', () => {
-                localStorage.setItem(storageKey, '0');
+                localStorage.setItem(storageKey, '0'); // Сбрасываем для следующего прослушивания
+                sendProgressUpdate(true); // Отправляем финальный статус
             });
 
+            tg.onEvent('viewportChanged', (event) => {
+                if (!event.isStateStable) {
+                     sendProgressUpdate();
+                }
+            });
+            
         } catch (e) {
             tg.showAlert(`Критическая ошибка: ${e.message}`);
         }

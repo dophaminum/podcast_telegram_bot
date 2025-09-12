@@ -97,15 +97,20 @@ player.addEventListener('timeupdate', () => {
                 localStorage.setItem(storageKey, currentTime);
             });
             
-            // --- НОВЫЙ ОБРАБОТЧИК ДЛЯ КНОПКИ ---
+ 
             saveButton.addEventListener('click', () => {
                 // 1. Отправляем данные
                 sendProgressUpdate();
-                // 2. Даем небольшую задержку, чтобы данные успели уйти
+                
+                // 2. Меняем текст кнопки, чтобы показать, что действие выполнено
+                saveButton.innerText = "Отправлено!";
+                saveButton.disabled = true; // Делаем кнопку неактивной
+                
+                // 3. Через 2 секунды вернем все как было
                 setTimeout(() => {
-                    // 3. Закрываем окно Web App
-                    tg.close();
-                }, 100); // 100 миллисекунд
+                    saveButton.innerText = "Сохранить прогресс и закрыть";
+                    saveButton.disabled = false;
+                }, 2000);
             });
 
             player.addEventListener('ended', () => {
@@ -125,4 +130,5 @@ player.addEventListener('timeupdate', () => {
     </script>
 </body>
 </html>
+
 

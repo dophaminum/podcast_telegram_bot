@@ -90,15 +90,19 @@
             return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
         }
 
-        try {
-            // --- Основной блок ---
+       try {
             const urlParams = new URLSearchParams(window.location.search);
             fileId = urlParams.get('file_id');
-            userId = urlParams.get('user_id'); // Получаем user_id
+            userId = urlParams.get('user_id');
             const fileUrl = urlParams.get('file_url');
-            const fileName = urlParams.get('file_name') || 'Аудиозапись';
-            const totalDuration = parseInt(urlParams.get('duration') || '0', 10);
             
+            // --- НОВЫЙ КОД: извлекаем домен сервера из file_url ---
+            if (fileUrl) {
+                const urlObject = new URL(fileUrl);
+                baseApiUrl = `${urlObject.protocol}//${urlObject.host}`; // Получаем "https://7777777.ddns.net"
+            }
+            // ----------------------------------------------------
+
             if (!fileUrl || !fileId || !userId) {
                 throw new Error("Ключевые параметры (file_id, user_id, file_url) не указаны.");
             }
@@ -151,6 +155,7 @@
     </script>
 </body>
 </html>
+
 
 
 

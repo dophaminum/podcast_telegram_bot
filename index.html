@@ -5,42 +5,33 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Плеер</title>
     <style>
-        body { 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
-            background-color: var(--tg-theme-bg-color, #222); 
-            color: var(--tg-theme-text-color, #fff); 
-            margin: 0; 
-            padding: 15px; 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            height: 100vh; 
-            box-sizing: border-box; 
-        }
-        #title { 
-            font-size: 18px; 
-            font-weight: bold; 
-            margin-bottom: 20px; 
-            text-align: center; 
-        }
-        audio { 
-            width: 100%; 
-            max-width: 400px; 
-        }
-        #time-display {
-            font-family: 'Courier New', Courier, monospace;
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: var(--tg-theme-bg-color, #222); color: var(--tg-theme-text-color, #fff); margin: 0; padding: 15px; display: flex; flex-direction: column; align-items: center; height: 100vh; box-sizing: border-box; }
+        #title { font-size: 18px; font-weight: bold; margin-bottom: 20px; text-align: center; }
+        audio { width: 100%; max-width: 400px; }
+        #time-display { font-family: 'Courier New', Courier, monospace; font-size: 16px; color: var(--tg-theme-hint-color, #aaa); margin-top: 8px; margin-bottom: 20px; }
+        /* --- СТИЛЬ ДЛЯ НОВОЙ КНОПКИ --- */
+        #save-button {
+            width: 100%;
+            max-width: 400px;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            background-color: var(--tg-theme-button-color, #007bff);
+            color: var(--tg-theme-button-text-color, #fff);
+            cursor: pointer;
             font-size: 16px;
-            color: var(--tg-theme-hint-color, #aaa);
-            margin-top: 8px;
-            margin-bottom: 20px;
+            font-weight: bold;
+            margin-top: 20px;
         }
     </style>
 </head>
 <body>
-
     <div id="title">Загрузка аудио...</div>
     <audio id="player" controls></audio>
     <div id="time-display">--:-- / --:--</div>
+    
+    <!-- --- НОВАЯ КНОПКА СОХРАНЕНИЯ --- -->
+    <button id="save-button">Сохранить прогресс и закрыть</button>
     
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script>
@@ -51,12 +42,13 @@
         const titleDiv = document.getElementById('title');
         const player = document.getElementById('player');
         const timeDisplay = document.getElementById('time-display');
+        // --- ПОЛУЧАЕМ НОВУЮ КНОПКУ ---
+        const saveButton = document.getElementById('save-button');
         
         let fileId = null;
         let storageKey = null;
-        let lastUpdateTime = 0; // Для отправки данных боту
 
-        // Функция для отправки данных боту (вспомогательная)
+        // Функция отправки данных (остается на всякий случай)
         function sendProgressUpdate(isFinished = false) {
             if (!fileId) return;
             const currentTime = Math.floor(player.currentTime);
@@ -99,26 +91,21 @@
             timeDisplay.innerText = `${formatTime(lastPosition)} / ${formatTime(totalDuration)}`;
 
             // ОБРАБОТЧИКИ СОБЫТИЙ
-            player.addEventListener('canplaythrough', () => {
-                // Всегда доверяем localStorage, а не данным от бота
-                player.currentTime = lastPosition;
-                player.play();
-            }, { once: true });
-
-            player.addEventListener('timeupdate', () => {
+player.addEventListener('timeupdate', () => {
                 const currentTime = Math.floor(player.currentTime);
-                // 1. Обновляем время на экране
                 timeDisplay.innerText = `${formatTime(currentTime)} / ${formatTime(totalDuration)}`;
-
-                // 2. Надежно сохраняем в localStorage
                 localStorage.setItem(storageKey, currentTime);
-
-                // 3. Пытаемся отправить данные боту для отображения (не критично, если не дойдет)
-                const now = Date.now();
-                if (now - lastUpdateTime > 5000) {
-                    sendProgressUpdate();
-                    lastUpdateTime = now;
-                }
+            });
+            
+            // --- НОВЫЙ ОБРАБОТЧИК ДЛЯ КНОПКИ ---
+            saveButton.addEventListener('click', () => {
+                // 1. Отправляем данные
+                sendProgressUpdate();
+                // 2. Даем небольшую задержку, чтобы данные успели уйти
+                setTimeout(() => {
+                    // 3. Закрываем окно Web App
+                    tg.close();
+                }, 100); // 100 миллисекунд
             });
 
             player.addEventListener('ended', () => {
@@ -138,3 +125,4 @@
     </script>
 </body>
 </html>
+

@@ -5,91 +5,91 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Плеер</title>
     <style>
-        /* ... стили остаются без изменений ... */
+        /* Стили остаются без изменений */
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: var(--tg-theme-bg-color, #222); color: var(--tg-theme-text-color, #fff); margin: 0; padding: 15px; display: flex; flex-direction: column; align-items: center; height: 100vh; box-sizing: border-box; }
+        #title { font-size: 18px; font-weight: bold; margin-bottom: 20px; text-align: center; }
+        audio { width: 100%; max-width: 400px; margin-bottom: 20px; }
+        #status { margin-top: 10px; font-size: 14px; color: #aaa; }
     </style>
 </head>
 <body>
+
     <div id="title">Загрузка аудио...</div>
     <audio id="player" controls></audio>
-    <div id="timecodes-container"></div>
     <div id="status"></div>
 
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script>
         const tg = window.Telegram.WebApp;
         tg.ready();
-        tg.expand(); // Раскрываем окно на полную высоту
+        tg.expand();
 
+        const titleDiv = document.getElementById('title');
         const player = document.getElementById('player');
-        // ... остальные getElementById без изменений ...
-
-        // --- НОВАЯ ЛОГИКА ---
-        let lastUpdateTime = 0;
+        const statusDiv = document.getElementById('status');
+        
+        // Переменные для отслеживания
         let fileId = null;
-
-        // Функция для отправки данных о прогрессе боту
-        function sendProgressUpdate(isFinished = false) {
-            const currentTime = Math.floor(player.currentTime);
-            const dataToSend = {
-                file_id: fileId,
-                position: currentTime,
-                is_finished: isFinished,
-            };
-            // sendData отправляет строку в виде "невидимого" сообщения от пользователя боту
-            tg.sendData(JSON.stringify(dataToSend));
-        }
+        // Создаем уникальный ключ для хранения в localStorage
+        let storageKey = null;
 
         try {
+            // --- СЧИТЫВАЕМ ДАННЫЕ ИЗ URL ---
             const urlParams = new URLSearchParams(window.location.search);
             fileId = urlParams.get('file_id');
-            const lastPosition = parseInt(urlParams.get('last_position') || '0', 10);
-            
-            // Остальные параметры ...
             const fileUrl = urlParams.get('file_url');
             const fileName = urlParams.get('file_name') || 'Аудиозапись';
-            const startTime = parseInt(urlParams.get('start_time') || '0', 10);
-            
-            // ... код для создания кнопок таймкодов без изменений ...
+            // Позиция с тайм-кода, если пользователь нажал на него
+            const startTimeFromParam = parseInt(urlParams.get('start_time') || '0', 10);
 
-            if (!fileUrl || !fileId) throw new Error("ID файла или URL не указаны.");
+            if (!fileUrl || !fileId) {
+                throw new Error("ID файла или URL не указаны.");
+            }
             
-            document.getElementById('title').innerText = fileName;
+            // --- НОВАЯ ЛОГИКА С LOCALSTORAGE ---
+            // Ключ будет выглядеть как 'progress_123'
+            storageKey = `progress_${fileId}`; 
+            
+            // Пытаемся загрузить сохраненный прогресс из localStorage
+            const savedProgress = localStorage.getItem(storageKey);
+            let lastPosition = 0;
+            if (savedProgress) {
+                lastPosition = parseInt(savedProgress, 10);
+            }
+            // ------------------------------------
+
+            titleDiv.innerText = fileName;
             player.src = fileUrl;
 
-            // Устанавливаем стартовую позицию
+            // --- ОБРАБОТЧИКИ СОБЫТИЙ ПЛЕЕРА ---
             player.addEventListener('canplaythrough', () => {
-                // Если был передан таймкод (start_time > 0), он в приоритете.
-                // Иначе используем сохраненную позицию (last_position).
-                player.currentTime = startTime > 0 ? startTime : lastPosition;
+                // Если пользователь кликнул на таймкод, он в приоритете. Иначе - начинаем с сохраненной позиции.
+                player.currentTime = startTimeFromParam > 0 ? startTimeFromParam : lastPosition;
                 player.play();
-                document.getElementById('status').innerText = 'Воспроизведение...';
+                statusDiv.innerText = 'Воспроизведение...';
             }, { once: true });
 
-            // Периодически обновляем прогресс
+            // Каждые 3 секунды сохраняем текущую позицию в localStorage
             player.addEventListener('timeupdate', () => {
-                const currentTime = Date.now();
-                // Отправляем апдейт не чаще, чем раз в 5 секунд, чтобы не спамить
-                if (currentTime - lastUpdateTime > 5000) {
-                    sendProgressUpdate();
-                    lastUpdateTime = currentTime;
-                }
+                const currentTime = Math.floor(player.currentTime);
+                // Сохраняем позицию. Это очень быстрая операция.
+                localStorage.setItem(storageKey, currentTime);
             });
 
-            // Когда аудио доиграло до конца
+            // Когда аудио закончилось, можно сохранить специальное значение, например -1,
+            // или просто сбросить позицию на 0, чтобы в следующий раз начать сначала.
             player.addEventListener('ended', () => {
-                sendProgressUpdate(true);
+                localStorage.setItem(storageKey, '0');
             });
-
-            // Когда пользователь закрывает WebApp
-            tg.onEvent('viewportChanged', (event) => {
-                if (!event.isStateStable) {
-                     // Пользователь начал свайпать окно вниз, чтобы закрыть
-                     sendProgressUpdate();
-                }
+            
+            player.addEventListener('error', () => {
+                const errorMessage = 'Ошибка загрузки аудио. Убедитесь, что сервер запущен.';
+                statusDiv.innerText = errorMessage;
+                tg.showAlert(errorMessage);
             });
-
 
         } catch (e) {
+            statusDiv.innerText = `Ошибка: ${e.message}`;
             tg.showAlert(`Критическая ошибка: ${e.message}`);
         }
     </script>

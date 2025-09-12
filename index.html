@@ -49,10 +49,10 @@
         let userId = null; // ID пользователя для отправки на сервер
         let storageKey = null; // Ключ для localStorage
         let lastUpdateTime = 0; // Для ограничения частоты запросов
+        let baseApiUrl = '';
 
         // --- НОВАЯ ФУНКЦИЯ: Отправка прогресса на наш сервер через Fetch ---
         async function sendProgressUpdate(isFinished = false) {
-            // Не отправляем, если нет ключевых данных
             if (!fileId || !userId) return;
 
             const currentTime = Math.floor(player.currentTime);
@@ -64,27 +64,22 @@
             };
 
             try {
-                // Отправляем асинхронный POST-запрос.
-                // Мы используем относительный путь '/api/update_progress',
-                // так как запрос идет на тот же домен, с которого загружен аудиофайл.
-                const response = await fetch('/api/update_progress', {
+                // --- ГЛАВНОЕ ИСПРАВЛЕНИЕ ЗДЕСЬ ---
+                // Мы отправляем запрос на ПОЛНЫЙ АДРЕС НАШЕГО СЕРВЕРА.
+                const response = await fetch(`${baseApiUrl}/api/update_progress`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
                 });
+                // ------------------------------------
 
-                // Выводим в консоль ответ от сервера для отладки
                 const responseData = await response.json();
                 console.log('Progress update response:', responseData);
 
             } catch (error) {
-                // Выводим в консоль ошибку, если запрос не удался (например, нет сети)
                 console.error('Failed to send progress update:', error);
             }
         }
-
         // Вспомогательная функция для форматирования времени
         function formatTime(seconds) {
             if (isNaN(seconds) || seconds < 0) {
@@ -156,6 +151,7 @@
     </script>
 </body>
 </html>
+
 
 
 

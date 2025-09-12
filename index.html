@@ -98,19 +98,13 @@ player.addEventListener('timeupdate', () => {
             });
             
  
-            saveButton.addEventListener('click', () => {
-                // 1. Отправляем данные
+saveButton.addEventListener('click', () => {
                 sendProgressUpdate();
                 
-                // 2. Меняем текст кнопки, чтобы показать, что действие выполнено
-                saveButton.innerText = "Отправлено!";
-                saveButton.disabled = true; // Делаем кнопку неактивной
-                
-                // 3. Через 2 секунды вернем все как было
+                // Даем себе 5 секунд, чтобы посмотреть в консоль
                 setTimeout(() => {
-                    saveButton.innerText = "Сохранить прогресс и закрыть";
-                    saveButton.disabled = false;
-                }, 2000);
+                    tg.close();
+                }, 5000); // 5000 миллисекунд = 5 секунд
             });
 
             player.addEventListener('ended', () => {
@@ -130,5 +124,6 @@ player.addEventListener('timeupdate', () => {
     </script>
 </body>
 </html>
+
 
 

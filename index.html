@@ -5,12 +5,36 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Плеер</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: var(--tg-theme-bg-color, #222); color: var(--tg-theme-text-color, #fff); margin: 0; padding: 15px; display: flex; flex-direction: column; align-items: center; height: 100vh; box-sizing: border-box; }
-        #title { font-size: 18px; font-weight: bold; margin-bottom: 20px; text-align: center; }
-        audio { width: 100%; max-width: 400px; }
-        #time-display { font-family: 'Courier New', Courier, monospace; font-size: 16px; color: var(--tg-theme-hint-color, #aaa); margin-top: 8px; margin-bottom: 20px; }
-        /* --- СТИЛЬ ДЛЯ НОВОЙ КНОПКИ --- */
-        #save-button {
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
+            background-color: var(--tg-theme-bg-color, #222); 
+            color: var(--tg-theme-text-color, #fff); 
+            margin: 0; 
+            padding: 15px; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            height: 100vh; 
+            box-sizing: border-box; 
+        }
+        #title { 
+            font-size: 18px; 
+            font-weight: bold; 
+            margin-bottom: 20px; 
+            text-align: center; 
+        }
+        audio { 
+            width: 100%; 
+            max-width: 400px; 
+        }
+        #time-display {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 16px;
+            color: var(--tg-theme-hint-color, #aaa);
+            margin-top: 8px;
+            margin-bottom: 20px;
+        }
+        #close-button {
             width: 100%;
             max-width: 400px;
             padding: 12px;
@@ -26,14 +50,15 @@
     </style>
 </head>
 <body>
+
     <div id="title">Загрузка аудио...</div>
     <audio id="player" controls></audio>
     <div id="time-display">--:-- / --:--</div>
     
-    <!-- --- НОВАЯ КНОПКА СОХРАНЕНИЯ --- -->
-    <button id="save-button">Сохранить прогресс и закрыть</button>
+    <!-- Финальная версия кнопки -->
+    <button id="close-button">Закрыть</button>
     
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <!-- Весь JavaScript код находится здесь -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script>
         const tg = window.Telegram.WebApp;
@@ -44,6 +69,7 @@
         const titleDiv = document.getElementById('title');
         const player = document.getElementById('player');
         const timeDisplay = document.getElementById('time-display');
+        const closeButton = document.getElementById('close-button'); // Находим кнопку "Закрыть"
         
         // --- Переменные для хранения состояния ---
         let fileId = null;
@@ -93,10 +119,7 @@
             fileId = urlParams.get('file_id');
             userId = urlParams.get('user_id');
             const fileUrl = urlParams.get('file_url');
- 
             const fileName = urlParams.get('file_name') || 'Аудиозапись';
-            // --------------------------------------------------------
-
             const totalDuration = parseInt(urlParams.get('duration') || '0', 10);
             
             if (fileUrl) {
@@ -112,7 +135,7 @@
             const savedProgress = localStorage.getItem(storageKey);
             let lastPosition = savedProgress ? parseInt(savedProgress, 10) : 0;
             
-            titleDiv.innerText = fileName; // Теперь переменная fileName определена
+            titleDiv.innerText = fileName;
             player.src = fileUrl;
             timeDisplay.innerText = `${formatTime(lastPosition)} / ${formatTime(totalDuration)}`;
 
@@ -142,6 +165,14 @@
             player.addEventListener('error', () => {
                 tg.showAlert('Ошибка загрузки аудио. Убедитесь, что сервер запущен.');
             });
+            
+            // --- ОБРАБОТЧИК ДЛЯ КНОПКИ "ЗАКРЫТЬ" ---
+            closeButton.addEventListener('click', () => {
+                // Перед закрытием отправляем финальное обновление прогресса
+                sendProgressUpdate();
+                // Используем встроенную функцию Telegram для закрытия Web App
+                tg.close();
+            });
 
         } catch (e) {
             tg.showAlert(`Критическая ошибка: ${e.message}`);
@@ -149,12 +180,3 @@
     </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-

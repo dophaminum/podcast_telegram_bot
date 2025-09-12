@@ -34,6 +34,7 @@
     <button id="save-button">Сохранить прогресс и закрыть</button>
     
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script>
         const tg = window.Telegram.WebApp;
         tg.ready();
@@ -46,12 +47,12 @@
         
         // --- Переменные для хранения состояния ---
         let fileId = null;
-        let userId = null; // ID пользователя для отправки на сервер
-        let storageKey = null; // Ключ для localStorage
-        let lastUpdateTime = 0; // Для ограничения частоты запросов
+        let userId = null;
+        let storageKey = null;
+        let lastUpdateTime = 0;
         let baseApiUrl = '';
 
-        // --- НОВАЯ ФУНКЦИЯ: Отправка прогресса на наш сервер через Fetch ---
+        // --- Функция отправки прогресса на сервер ---
         async function sendProgressUpdate(isFinished = false) {
             if (!fileId || !userId) return;
 
@@ -64,23 +65,19 @@
             };
 
             try {
-                // --- ГЛАВНОЕ ИСПРАВЛЕНИЕ ЗДЕСЬ ---
-                // Мы отправляем запрос на ПОЛНЫЙ АДРЕС НАШЕГО СЕРВЕРА.
                 const response = await fetch(`${baseApiUrl}/api/update_progress`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
                 });
-                // ------------------------------------
-
                 const responseData = await response.json();
                 console.log('Progress update response:', responseData);
-
             } catch (error) {
                 console.error('Failed to send progress update:', error);
             }
         }
-        // Вспомогательная функция для форматирования времени
+
+        // --- Вспомогательная функция для форматирования времени ---
         function formatTime(seconds) {
             if (isNaN(seconds) || seconds < 0) {
                 return "--:--";
@@ -90,46 +87,47 @@
             return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
         }
 
-       try {
+        try {
+            // --- Основной блок ---
             const urlParams = new URLSearchParams(window.location.search);
             fileId = urlParams.get('file_id');
             userId = urlParams.get('user_id');
             const fileUrl = urlParams.get('file_url');
             
-            // --- НОВЫЙ КОД: извлекаем домен сервера из file_url ---
+            // --- ВОТ ИСПРАВЛЕНИЕ: ВОЗВРАЩАЕМ ПРОПУЩЕННУЮ СТРОКУ ---
+            const fileName = urlParams.get('file_name') || 'Аудиозапись';
+            // --------------------------------------------------------
+
+            const totalDuration = parseInt(urlParams.get('duration') || '0', 10);
+            
             if (fileUrl) {
                 const urlObject = new URL(fileUrl);
-                baseApiUrl = `${urlObject.protocol}//${urlObject.host}`; // Получаем "https://7777777.ddns.net"
+                baseApiUrl = `${urlObject.protocol}//${urlObject.host}`;
             }
-            // ----------------------------------------------------
 
             if (!fileUrl || !fileId || !userId) {
                 throw new Error("Ключевые параметры (file_id, user_id, file_url) не указаны.");
             }
             
-            // --- Логика localStorage (остается главной) ---
             storageKey = `progress_${fileId}`; 
             const savedProgress = localStorage.getItem(storageKey);
             let lastPosition = savedProgress ? parseInt(savedProgress, 10) : 0;
             
-            titleDiv.innerText = fileName;
+            titleDiv.innerText = fileName; // Теперь переменная fileName определена
             player.src = fileUrl;
             timeDisplay.innerText = `${formatTime(lastPosition)} / ${formatTime(totalDuration)}`;
 
-            // --- ОБРАБОТЧИКИ СОБЫТИЙ ПЛЕЕРА ---
+            // --- ОБРАБОТЧИКИ СОБЫТИЙ ---
             player.addEventListener('canplaythrough', () => {
-                // Всегда доверяем localStorage при старте
                 player.currentTime = lastPosition;
                 player.play();
             }, { once: true });
 
             player.addEventListener('timeupdate', () => {
                 const currentTime = Math.floor(player.currentTime);
-                // 1. Обновляем время на экране
                 timeDisplay.innerText = `${formatTime(currentTime)} / ${formatTime(totalDuration)}`;
-                // 2. Надежно сохраняем в localStorage
                 localStorage.setItem(storageKey, currentTime);
-                // 3. Пытаемся отправить данные на сервер (не чаще раза в 5 сек)
+                
                 const now = Date.now();
                 if (now - lastUpdateTime > 5000) {
                     sendProgressUpdate();
@@ -143,18 +141,16 @@
             });
 
             player.addEventListener('error', () => {
-                const errorMessage = 'Ошибка загрузки аудио. Убедитесь, что сервер запущен.';
-                tg.showAlert(errorMessage);
+                tg.showAlert('Ошибка загрузки аудио. Убедитесь, что сервер запущен.');
             });
 
         } catch (e) {
-            // Показываем пользователю критические ошибки
             tg.showAlert(`Критическая ошибка: ${e.message}`);
         }
- 
     </script>
 </body>
 </html>
+
 
 
 

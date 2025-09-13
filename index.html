@@ -64,6 +64,7 @@
     
     <!-- Весь JavaScript код находится здесь -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script>
         const tg = window.Telegram.WebApp;
         tg.ready();
@@ -73,7 +74,8 @@
         const titleDiv = document.getElementById('title');
         const player = document.getElementById('player');
         const timeDisplay = document.getElementById('time-display');
-        const closeButton = document.getElementById('close-button'); // Находим кнопку "Закрыть"
+        const timecodesContainer = document.getElementById('timecodes-container');
+        const closeButton = document.getElementById('close-button');
         
         // --- Переменные для хранения состояния ---
         let fileId = null;
@@ -107,14 +109,46 @@
             }
         }
 
-        // --- Вспомогательная функция для форматирования времени ---
-        function formatTime(seconds) {
-            if (isNaN(seconds) || seconds < 0) {
-                return "--:--";
+        // --- Функция загрузки и отображения таймкодов ---
+        async function loadAndRenderTimecodes() {
+            if (!fileId) return;
+
+            try {
+                const response = await fetch(`${baseApiUrl}/api/get_timecodes/${fileId}`);
+                const timecodes = await response.json();
+
+                timecodesContainer.innerHTML = ''; // Очищаем старые кнопки
+
+                if (Array.isArray(timecodes) && timecodes.length > 0) {
+                    timecodes.forEach(tc => {
+                        const button = document.createElement('button');
+                        button.className = 'timecode-button';
+                        button.innerText = `${tc.label} (${tc.time})`;
+                        button.onclick = () => {
+                            player.currentTime = timeStrToSeconds(tc.time);
+                            player.play();
+                        };
+                        timecodesContainer.appendChild(button);
+                    });
+                }
+            } catch (error) {
+                console.error("Failed to load timecodes:", error);
             }
+        }
+
+        // --- Вспомогательные функции для времени ---
+        function formatTime(seconds) {
+            if (isNaN(seconds) || seconds < 0) return "--:--";
             const mins = Math.floor(seconds / 60);
             const secs = Math.floor(seconds % 60);
             return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        }
+        function timeStrToSeconds(timeStr) {
+            const parts = timeStr.split(':').map(Number);
+            let seconds = 0;
+            if (parts.length === 3) seconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
+            else if (parts.length === 2) seconds = parts[0] * 60 + parts[1];
+            return seconds;
         }
 
         try {
@@ -143,6 +177,9 @@
             player.src = fileUrl;
             timeDisplay.innerText = `${formatTime(lastPosition)} / ${formatTime(totalDuration)}`;
 
+            // Запускаем асинхронную загрузку таймкодов
+            loadAndRenderTimecodes();
+
             // --- ОБРАБОТЧИКИ СОБЫТИЙ ---
             player.addEventListener('canplaythrough', () => {
                 player.currentTime = lastPosition;
@@ -170,11 +207,8 @@
                 tg.showAlert('Ошибка загрузки аудио. Убедитесь, что сервер запущен.');
             });
             
-            // --- ОБРАБОТЧИК ДЛЯ КНОПКИ "ЗАКРЫТЬ" ---
             closeButton.addEventListener('click', () => {
-                // Перед закрытием отправляем финальное обновление прогресса
                 sendProgressUpdate();
-                // Используем встроенную функцию Telegram для закрытия Web App
                 tg.close();
             });
 
@@ -184,4 +218,5 @@
     </script>
 </body>
 </html>
+
 

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Плеер</title>
-    <style>
+<style>
         body { 
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
             background-color: var(--tg-theme-bg-color, #222); 
@@ -17,15 +17,13 @@
             height: 100vh; 
             box-sizing: border-box; 
         }
-       #title {  
+        #title { 
             font-size: 18px; 
             font-weight: bold; 
             margin-bottom: 20px; 
             text-align: center; 
-            /* --- НОВЫЕ СТРОКИ ДЛЯ ПЕРЕНОСА --- */
             overflow-wrap: break-word;
             word-break: break-word;
-            /* ---------------------------------- */
         }
         audio { 
             width: 100%; 
@@ -49,7 +47,35 @@
             cursor: pointer;
             font-size: 16px;
             font-weight: bold;
+            margin-top: auto; /* Прижимает кнопку к низу */
+            padding-bottom: 20px; /* Добавляем отступ снизу */
+        }
+        
+        /* --- НОВЫЕ СТИЛИ ДЛЯ КОНТЕЙНЕРА И КНОПОК ТАЙМКОДОВ --- */
+        #timecodes-container {
+            width: 100%;
+            max-width: 400px;
+            /* Позволяет контейнеру занять все доступное место */
+            flex-grow: 1; 
+            display: flex;
+            flex-direction: column;
+            gap: 8px; /* Расстояние между кнопками */
+            overflow-y: auto; /* Позволяет прокручивать список, если он длинный */
             margin-top: 20px;
+            padding-right: 10px; /* Небольшой отступ справа для скроллбара */
+        }
+        .timecode-button {
+            width: 100%;
+            padding: 12px 15px; /* Увеличиваем отступ по бокам */
+            border: none;
+            border-radius: 8px;
+            background-color: var(--tg-theme-secondary-bg-color, #333);
+            color: var(--tg-theme-text-color, #fff);
+            cursor: pointer;
+            font-size: 14px;
+            /* --- ГЛАВНОЕ ИЗМЕНЕНИЕ: ВЫРАВНИВАНИЕ ПО ЛЕВОМУ КРАЮ --- */
+            text-align: left;
+            /* -------------------------------------------------------- */
         }
     </style>
 </head>
@@ -219,6 +245,7 @@
     </script>
 </body>
 </html>
+
 
 
 

@@ -33,6 +33,7 @@
     </div>
     
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script>
         const tg = window.Telegram.WebApp;
         tg.ready();
@@ -44,6 +45,7 @@
         const timeDisplay = document.getElementById('time-display');
         const timecodesContainer = document.getElementById('timecodes-container');
         const closeButton = document.getElementById('close-button');
+        const loaderDiv = document.getElementById('loader');
         
         // --- Переменные состояния ---
         let fileId = null;
@@ -52,13 +54,14 @@
         let baseApiUrl = '';
         let lastUpdateTime = 0;
 
-        // --- Вспомогательные функции (остаются без изменений) ---
+        // --- Вспомогательные функции ---
         function formatTime(seconds) {
             if (isNaN(seconds) || seconds < 0) return "--:--";
             const mins = Math.floor(seconds / 60);
             const secs = Math.floor(seconds % 60);
             return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
         }
+
         function timeStrToSeconds(timeStr) {
             const parts = timeStr.split(':').map(Number);
             let seconds = 0;
@@ -66,6 +69,7 @@
             else if (parts.length === 2) seconds = parts[0] * 60 + parts[1];
             return seconds;
         }
+
         async function sendProgressUpdate(isFinished = false) {
             if (!fileId || !userId) return;
             const currentTime = Math.floor(player.currentTime);
@@ -85,6 +89,7 @@
                 console.error('Failed to send progress update:', error);
             }
         }
+
         async function loadAndRenderTimecodes() {
             if (!fileId) return;
             try {
@@ -108,72 +113,83 @@
             }
         }
 
-        // --- ОСНОВНАЯ ЛОГИКА (ПРОСТАЯ И НАДЕЖНАЯ) ---
-        try {
-            const urlParams = new URLSearchParams(window.location.search);
-            fileId = urlParams.get('file_id');
-            userId = urlParams.get('user_id');
-            const fileUrl = urlParams.get('file_url');
-            const fileName = urlParams.get('file_name') || 'Аудиозапись';
-            const totalDuration = parseInt(urlParams.get('duration') || '0', 10);
-
-            if (!fileUrl || !fileId || !userId) {
-                throw new Error("Ключевые параметры не указаны.");
+        function setupMediaSession(fileName, channelName = "Подкаст") {
+            if ('mediaSession' in navigator) {
+                navigator.mediaSession.metadata = new MediaMetadata({
+                    title: fileName,
+                    artist: channelName,
+                    album: 'Ваш Аудио-Бот',
+                });
+                navigator.mediaSession.setActionHandler('play', () => player.play());
+                navigator.mediaSession.setActionHandler('pause', () => player.pause());
+                navigator.mediaSession.setActionHandler('seekbackward', (d) => { player.currentTime -= (d.seekOffset || 10); });
+                navigator.mediaSession.setActionHandler('seekforward', (d) => { player.currentTime += (d.seekOffset || 10); });
             }
-            
-            const urlObject = new URL(fileUrl);
-            baseApiUrl = `${urlObject.protocol}//${urlObject.host}`;
-
-            titleDiv.innerText = fileName;
-            storageKey = `progress_${fileId}`;
-            const lastPosition = parseInt(localStorage.getItem(storageKey) || '0', 10);
-            
-            // Устанавливаем источник аудио напрямую
-            player.src = fileUrl;
-            
-            // Отображаем время
-            timeDisplay.innerText = `${formatTime(lastPosition)} / ${formatTime(totalDuration)}`;
-
-            // Запускаем загрузку таймкодов
-            loadAndRenderTimecodes();
-
-            // --- ОБРАБОТЧИКИ СОБЫТИЙ ---
-            // Используем 'loadedmetadata', чтобы установить позицию, как только плеер узнает длительность
-            player.addEventListener('loadedmetadata', () => {
-                player.currentTime = lastPosition;
-                player.play();
-            }, { once: true });
-
-            player.addEventListener('timeupdate', () => {
-                const currentTime = Math.floor(player.currentTime);
-                timeDisplay.innerText = `${formatTime(currentTime)} / ${formatTime(totalDuration)}`;
-                localStorage.setItem(storageKey, currentTime);
-                
-                const now = Date.now();
-                if (now - lastUpdateTime > 5000) {
-                    sendProgressUpdate();
-                    lastUpdateTime = now;
-                }
-            });
-
-            player.addEventListener('ended', () => {
-                localStorage.setItem(storageKey, '0');
-                sendProgressUpdate(true);
-            });
-
-            player.addEventListener('error', () => {
-                tg.showAlert('Ошибка загрузки аудио. Убедитесь, что сервер запущен и доступен.');
-            });
-            
-            closeButton.addEventListener('click', () => {
-                sendProgressUpdate();
-                tg.close();
-            });
-
-        } catch (e) {
-            tg.showAlert(`Критическая ошибка: ${e.message}`);
         }
+
+        // --- Главная функция, которая запускает все ---
+        async function initializePlayer() {
+            try {
+                const urlParams = new URLSearchParams(window.location.search);
+                fileId = urlParams.get('file_id');
+                userId = urlParams.get('user_id');
+                const fileUrl = urlParams.get('file_url');
+                const fileName = urlParams.get('file_name') || 'Аудиозапись';
+                const totalDuration = parseInt(urlParams.get('duration') || '0', 10);
+
+                if (!fileUrl || !fileId || !userId) throw new Error("Ключевые параметры не указаны.");
+                
+                const urlObject = new URL(fileUrl);
+                baseApiUrl = `${urlObject.protocol}//${urlObject.host}`;
+
+                titleDiv.innerText = fileName;
+                storageKey = `progress_${fileId}`;
+                const lastPosition = parseInt(localStorage.getItem(storageKey) || '0', 10);
+                
+                // Используем простую и надежную схему
+                player.src = fileUrl;
+                
+                timeDisplay.innerText = `${formatTime(lastPosition)} / ${formatTime(totalDuration)}`;
+
+                setupMediaSession(fileName);
+                loadAndRenderTimecodes();
+
+                player.addEventListener('loadedmetadata', () => {
+                    player.currentTime = lastPosition;
+                    player.play();
+                }, { once: true });
+
+            } catch (e) {
+                loaderDiv.innerText = `Ошибка инициализации: ${e.message}`;
+                tg.showAlert(`Критическая ошибка: ${e.message}`);
+            }
+        }
+
+        // --- Запускаем всю логику ---
+        initializePlayer();
+
+        // --- Навешиваем обработчики событий ---
+        player.addEventListener('timeupdate', () => {
+            const currentTime = Math.floor(player.currentTime);
+            localStorage.setItem(storageKey, currentTime);
+            const now = Date.now();
+            if (now - lastUpdateTime > 5000) {
+                sendProgressUpdate();
+                lastUpdateTime = now;
+            }
+        });
+
+        player.addEventListener('ended', () => {
+            localStorage.setItem(storageKey, '0');
+            sendProgressUpdate(true);
+        });
+        
+        closeButton.addEventListener('click', () => {
+            sendProgressUpdate();
+            tg.close();
+        });
     </script>
 
 </body>
 </html>
+

@@ -61,11 +61,10 @@
         async function loadAndRenderTimecodes() { /* ... */ }
 
         // --- Главная функция, которая запускает все ---
-                async function initializePlayer() {
+       async function initializePlayer() {
             try {
-                // Проверяем, поддерживает ли браузер MSE
                 if (!window.MediaSource) {
-                    throw new Error('Ваш клиент Telegram не поддерживает Media Source Extensions. Невозможно запустить стриминг.');
+                    throw new Error('Ваш клиент Telegram не поддерживает Media Source Extensions.');
                 }
 
                 // 1. Получаем параметры из URL (без изменений)
@@ -87,45 +86,52 @@
                 document.getElementById('time-display').innerText = `${formatTime(lastPosition)} / ${formatTime(totalDuration)}`;
                 document.getElementById('loader').innerText = 'Подготовка к воспроизведению...';
 
-                // 2. Создаем MediaSource и привязываем к плееру
                 const mediaSource = new MediaSource();
                 player.src = URL.createObjectURL(mediaSource);
                 
-                // 3. Ждем, пока MediaSource будет готов принимать данные
                 mediaSource.addEventListener('sourceopen', async () => {
                     document.getElementById('loader').innerText = 'Загрузка аудио...';
                     try {
-                        // 4. Начинаем загрузку файла
                         const response = await fetch(fileUrl);
                         if (!response.ok) throw new Error(`Ошибка сети: ${response.statusText}`);
 
                         const mimeCodec = response.headers.get('Content-Type') || 'audio/mpeg';
                         if (!MediaSource.isTypeSupported(mimeCodec)) {
-                            throw new Error(`Формат ${mimeCodec} не поддерживается для стриминга.`);
+                            throw new Error(`Формат ${mimeCodec} не поддерживается.`);
                         }
 
-                        // 5. Создаем SourceBuffer, который будет принимать "кусочки" аудио
                         const sourceBuffer = mediaSource.addSourceBuffer(mimeCodec);
                         const reader = response.body.getReader();
 
-                        // 6. Начинаем "перекачивать" данные из сети в буфер
-                        while (true) {
+                        // --- ГЛАВНОЕ ИСПРАВЛЕНИЕ ЗДЕСЬ ---
+                        // Создаем функцию-насос, которая будет "качать" данные
+                        async function pump() {
+                            // Ждем, пока буфер не освободится
+                            if (sourceBuffer.updating) {
+                                await new Promise(resolve => sourceBuffer.addEventListener('updateend', resolve, { once: true }));
+                            }
+
                             const { done, value } = await reader.read();
                             if (done) {
+                                // Если данные закончились, сообщаем об этом MediaSource
                                 if (!sourceBuffer.updating) {
                                     mediaSource.endOfStream();
                                 } else {
                                     sourceBuffer.addEventListener('updateend', () => mediaSource.endOfStream(), { once: true });
                                 }
-                                break;
+                                return; // Завершаем работу "насоса"
                             }
                             
-                            // "Скармливаем" полученный кусочек в буфер
-                            if (sourceBuffer.updating) {
-                                await new Promise(resolve => sourceBuffer.addEventListener('updateend', resolve, { once: true }));
-                            }
+                            // "Скармливаем" кусочек и сразу же вызываем "насос" снова
+                            // для получения следующего кусочка
                             sourceBuffer.appendBuffer(value);
+                            pump();
                         }
+                        
+                        // Запускаем "насос" в первый раз
+                        pump();
+                        // ------------------------------------
+
                     } catch (e) {
                         console.error("Ошибка во время стриминга:", e);
                         document.getElementById('loader').innerText = `Ошибка стриминга: ${e.message}`;
@@ -135,9 +141,9 @@
                     }
                 }, { once: true });
 
-                // Устанавливаем позицию, как только плеер будет готов
                 player.addEventListener('canplay', () => {
-                    document.getElementById('loader').style.display = 'none'; // Прячем индикатор загрузки
+                    document.getElementById('loader').style.display = 'none';
+                    player.controls = true; // Показываем контролы только когда все готово
                     player.currentTime = lastPosition;
                     player.play();
                 }, { once: true });
@@ -234,4 +240,5 @@
 
 </body>
 </html>
+
 

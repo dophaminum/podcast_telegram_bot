@@ -34,6 +34,7 @@
     </div>
     
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script>
         const tg = window.Telegram.WebApp;
         tg.ready();
@@ -55,139 +56,13 @@
         let lastUpdateTime = 0;
 
         // --- Вспомогательные функции ---
-        function formatTime(seconds) { /* ... */ }
-        function timeStrToSeconds(timeStr) { /* ... */ }
-        async function sendProgressUpdate(isFinished = false) { /* ... */ }
-        async function loadAndRenderTimecodes() { /* ... */ }
-
-        // --- Главная функция, которая запускает все ---
-       async function initializePlayer() {
-            try {
-                if (!window.MediaSource) {
-                    throw new Error('Ваш клиент Telegram не поддерживает Media Source Extensions.');
-                }
-
-                // 1. Получаем параметры из URL (без изменений)
-                const urlParams = new URLSearchParams(window.location.search);
-                fileId = urlParams.get('file_id');
-                userId = urlParams.get('user_id');
-                const fileUrl = urlParams.get('file_url');
-                const fileName = urlParams.get('file_name') || 'Аудиозапись';
-                const totalDuration = parseInt(urlParams.get('duration') || '0', 10);
-
-                if (!fileUrl || !fileId || !userId) throw new Error("Ключевые параметры не указаны.");
-                
-                const urlObject = new URL(fileUrl);
-                baseApiUrl = `${urlObject.protocol}//${urlObject.host}`;
-
-                document.getElementById('title').innerText = fileName;
-                storageKey = `progress_${fileId}`;
-                const lastPosition = parseInt(localStorage.getItem(storageKey) || '0', 10);
-                document.getElementById('time-display').innerText = `${formatTime(lastPosition)} / ${formatTime(totalDuration)}`;
-                document.getElementById('loader').innerText = 'Подготовка к воспроизведению...';
-
-                const mediaSource = new MediaSource();
-                player.src = URL.createObjectURL(mediaSource);
-                
-                mediaSource.addEventListener('sourceopen', async () => {
-                    document.getElementById('loader').innerText = 'Загрузка аудио...';
-                    try {
-                        const response = await fetch(fileUrl);
-                        if (!response.ok) throw new Error(`Ошибка сети: ${response.statusText}`);
-
-                        const mimeCodec = response.headers.get('Content-Type') || 'audio/mpeg';
-                        if (!MediaSource.isTypeSupported(mimeCodec)) {
-                            throw new Error(`Формат ${mimeCodec} не поддерживается.`);
-                        }
-
-                        const sourceBuffer = mediaSource.addSourceBuffer(mimeCodec);
-                        const reader = response.body.getReader();
-
-                        // --- ГЛАВНОЕ ИСПРАВЛЕНИЕ ЗДЕСЬ ---
-                        // Создаем функцию-насос, которая будет "качать" данные
-                        async function pump() {
-                            // Ждем, пока буфер не освободится
-                            if (sourceBuffer.updating) {
-                                await new Promise(resolve => sourceBuffer.addEventListener('updateend', resolve, { once: true }));
-                            }
-
-                            const { done, value } = await reader.read();
-                            if (done) {
-                                // Если данные закончились, сообщаем об этом MediaSource
-                                if (!sourceBuffer.updating) {
-                                    mediaSource.endOfStream();
-                                } else {
-                                    sourceBuffer.addEventListener('updateend', () => mediaSource.endOfStream(), { once: true });
-                                }
-                                return; // Завершаем работу "насоса"
-                            }
-                            
-                            // "Скармливаем" кусочек и сразу же вызываем "насос" снова
-                            // для получения следующего кусочка
-                            sourceBuffer.appendBuffer(value);
-                            pump();
-                        }
-                        
-                        // Запускаем "насос" в первый раз
-                        pump();
-                        // ------------------------------------
-
-                    } catch (e) {
-                        console.error("Ошибка во время стриминга:", e);
-                        document.getElementById('loader').innerText = `Ошибка стриминга: ${e.message}`;
-                        if (mediaSource.readyState === "open") {
-                            mediaSource.endOfStream('network');
-                        }
-                    }
-                }, { once: true });
-
-                player.addEventListener('canplay', () => {
-                    document.getElementById('loader').style.display = 'none';
-                    player.controls = true; // Показываем контролы только когда все готово
-                    player.currentTime = lastPosition;
-                    player.play();
-                }, { once: true });
-
-                loadAndRenderTimecodes();
-
-            } catch (e) {
-                document.getElementById('loader').innerText = `Ошибка инициализации: ${e.message}`;
-                tg.showAlert(`Критическая ошибка: ${e.message}`);
-            }
-        }
-
-        // --- Запускаем всю логику ---
-        initializePlayer();
-
-        // --- Навешиваем обработчики событий ---
-        player.addEventListener('timeupdate', () => {
-            const currentTime = Math.floor(player.currentTime);
-            localStorage.setItem(storageKey, currentTime);
-            
-            const now = Date.now();
-            if (now - lastUpdateTime > 5000) {
-                sendProgressUpdate();
-                lastUpdateTime = now;
-            }
-        });
-        
-        player.addEventListener('ended', () => {
-            localStorage.setItem(storageKey, '0');
-            sendProgressUpdate(true);
-        });
-        
-        closeButton.addEventListener('click', () => {
-            sendProgressUpdate();
-            tg.close();
-        });
-
-        // --- Полные версии вспомогательных функций ---
         function formatTime(seconds) {
             if (isNaN(seconds) || seconds < 0) return "--:--";
             const mins = Math.floor(seconds / 60);
             const secs = Math.floor(seconds % 60);
             return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
         }
+
         function timeStrToSeconds(timeStr) {
             const parts = timeStr.split(':').map(Number);
             let seconds = 0;
@@ -195,6 +70,7 @@
             else if (parts.length === 2) seconds = parts[0] * 60 + parts[1];
             return seconds;
         }
+
         async function sendProgressUpdate(isFinished = false) {
             if (!fileId || !userId) return;
             const currentTime = Math.floor(player.currentTime);
@@ -214,6 +90,7 @@
                 console.error('Failed to send progress update:', error);
             }
         }
+
         async function loadAndRenderTimecodes() {
             if (!fileId) return;
             try {
@@ -236,9 +113,123 @@
                 console.error("Failed to load timecodes:", error);
             }
         }
-    </script>
 
+        // --- Главная функция, которая запускает все ---
+        async function initializePlayer() {
+            try {
+                if (!window.MediaSource) {
+                    throw new Error('Ваш клиент Telegram не поддерживает Media Source Extensions.');
+                }
+
+                const urlParams = new URLSearchParams(window.location.search);
+                fileId = urlParams.get('file_id');
+                userId = urlParams.get('user_id');
+                const fileUrl = urlParams.get('file_url');
+                const fileName = urlParams.get('file_name') || 'Аудиозапись';
+                const totalDuration = parseInt(urlParams.get('duration') || '0', 10);
+
+                if (!fileUrl || !fileId || !userId) throw new Error("Ключевые параметры не указаны.");
+                
+                const urlObject = new URL(fileUrl);
+                baseApiUrl = `${urlObject.protocol}//${urlObject.host}`;
+
+                titleDiv.innerText = fileName;
+                storageKey = `progress_${fileId}`;
+                const lastPosition = parseInt(localStorage.getItem(storageKey) || '0', 10);
+                timeDisplay.innerText = `${formatTime(lastPosition)} / ${formatTime(totalDuration)}`;
+                loaderDiv.innerText = 'Подготовка к воспроизведению...';
+
+                const mediaSource = new MediaSource();
+                player.src = URL.createObjectURL(mediaSource);
+                
+                mediaSource.addEventListener('sourceopen', async () => {
+                    loaderDiv.innerText = 'Загрузка аудио...';
+                    try {
+                        const response = await fetch(fileUrl);
+                        if (!response.ok) throw new Error(`Ошибка сети: ${response.statusText}`);
+
+                        // --- ГЛАВНОЕ ИСПРАВЛЕНИЕ: Явно указываем кодек для mp4 ---
+                        let mimeCodec = response.headers.get('Content-Type') || 'audio/mpeg';
+                        if (mimeCodec.startsWith('audio/mp4')) {
+                            mimeCodec = 'audio/mp4; codecs="mp4a.40.2"';
+                        }
+                        // ---------------------------------------------------------
+                        
+                        if (!MediaSource.isTypeSupported(mimeCodec)) {
+                            throw new Error(`Формат ${mimeCodec} не поддерживается для стриминга.`);
+                        }
+
+                        const sourceBuffer = mediaSource.addSourceBuffer(mimeCodec);
+                        const reader = response.body.getReader();
+
+                        async function pump() {
+                            if (sourceBuffer.updating) {
+                                await new Promise(resolve => sourceBuffer.addEventListener('updateend', resolve, { once: true }));
+                            }
+                            const { done, value } = await reader.read();
+                            if (done) {
+                                if (!sourceBuffer.updating) {
+                                    mediaSource.endOfStream();
+                                } else {
+                                    sourceBuffer.addEventListener('updateend', () => mediaSource.endOfStream(), { once: true });
+                                }
+                                return;
+                            }
+                            sourceBuffer.appendBuffer(value);
+                            pump();
+                        }
+                        pump();
+
+                    } catch (e) {
+                        console.error("Ошибка во время стриминга:", e);
+                        loaderDiv.innerText = `Ошибка стриминга: ${e.message}`;
+                        if (mediaSource.readyState === "open") {
+                            mediaSource.endOfStream('network');
+                        }
+                    }
+                }, { once: true });
+
+                player.addEventListener('canplay', () => {
+                    loaderDiv.style.display = 'none';
+                    player.controls = true;
+                    player.currentTime = lastPosition;
+                    player.play();
+                }, { once: true });
+
+                loadAndRenderTimecodes();
+
+            } catch (e) {
+                loaderDiv.innerText = `Ошибка инициализации: ${e.message}`;
+                tg.showAlert(`Критическая ошибка: ${e.message}`);
+            }
+        }
+
+        // --- Запускаем всю логику ---
+        initializePlayer();
+
+        // --- Навешиваем обработчики событий ---
+        player.addEventListener('timeupdate', () => {
+            const currentTime = Math.floor(player.currentTime);
+            localStorage.setItem(storageKey, currentTime);
+            const now = Date.now();
+            if (now - lastUpdateTime > 5000) {
+                sendProgressUpdate();
+                lastUpdateTime = now;
+            }
+        });
+
+        player.addEventListener('ended', () => {
+            localStorage.setItem(storageKey, '0');
+            sendProgressUpdate(true);
+        });
+        
+        closeButton.addEventListener('click', () => {
+            sendProgressUpdate();
+            tg.close();
+        });
+    </script>
 </body>
 </html>
+
 
 

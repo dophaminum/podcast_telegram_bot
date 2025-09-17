@@ -7,11 +7,12 @@
     <style>
         html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: var(--tg-theme-bg-color, #222); color: var(--tg-theme-text-color, #fff); }
         .app-container { display: flex; flex-direction: column; height: 100%; }
-        .main-content { flex-grow: 1; overflow-y: auto; padding: 15px; }
+        .main-content { flex-grow: 1; overflow-y: auto; padding: 15px; text-align: center; }
         .footer { flex-shrink: 0; padding: 0 15px 15px 15px; }
-        #title { font-size: 18px; font-weight: bold; text-align: center; overflow-wrap: break-word; word-break: break-word; margin-bottom: 20px; }
-        audio { width: 100%; max-width: 400px; margin: 0 auto; display: block; }
-        #time-display { font-family: 'Courier New', Courier, monospace; font-size: 16px; color: var(--tg-theme-hint-color, #aaa); text-align: center; margin-top: 8px; }
+        #title { font-size: 18px; font-weight: bold; overflow-wrap: break-word; word-break: break-word; margin-bottom: 20px; }
+        audio { width: 100%; max-width: 400px; margin: 0 auto; display: none; } /* Плеер изначально скрыт */
+        #time-display { font-family: 'Courier New', Courier, monospace; font-size: 16px; color: var(--tg-theme-hint-color, #aaa); margin-top: 8px; }
+        #loader { margin-top: 20px; font-size: 14px; color: var(--tg-theme-hint-color, #aaa); }
         #timecodes-container { width: 100%; max-width: 400px; margin: 20px auto 0 auto; display: flex; flex-direction: column; gap: 8px; }
         .timecode-button { width: 100%; padding: 12px 15px; border: none; border-radius: 8px; background-color: var(--tg-theme-secondary-bg-color, #333); color: var(--tg-theme-text-color, #fff); cursor: pointer; font-size: 14px; text-align: left; }
         #close-button { width: 100%; max-width: 400px; display: block; margin: 0 auto; padding: 12px; border: none; border-radius: 8px; background-color: var(--tg-theme-button-color, #007bff); color: var(--tg-theme-button-text-color, #fff); cursor: pointer; font-size: 16px; font-weight: bold; }
@@ -21,13 +22,10 @@
 
     <div class="app-container">
         <div class="main-content">
-            <div id="title">Загрузка...</div>
-            
-            <!-- --- ГЛАВНОЕ УЛУЧШЕНИЕ ЗДЕСЬ --- -->
-            <audio id="player" controls preload="auto"></audio>
-            <!-- -------------------------------- -->
-             <div id="loader"></div>
+            <div id="title">Загрузка информации...</div>
+            <audio id="player" preload="metadata"></audio>
             <div id="time-display">--:-- / --:--</div>
+            <div id="loader"></div>
             <div id="timecodes-container"></div>
         </div>
         <div class="footer">
@@ -57,64 +55,10 @@
         let lastUpdateTime = 0;
 
         // --- Вспомогательные функции ---
-        function formatTime(seconds) {
-            if (isNaN(seconds) || seconds < 0) return "--:--";
-            const mins = Math.floor(seconds / 60);
-            const secs = Math.floor(seconds % 60);
-            return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-        }
-
-        function timeStrToSeconds(timeStr) {
-            const parts = timeStr.split(':').map(Number);
-            let seconds = 0;
-            if (parts.length === 3) seconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
-            else if (parts.length === 2) seconds = parts[0] * 60 + parts[1];
-            return seconds;
-        }
-
-        async function sendProgressUpdate(isFinished = false) {
-            if (!fileId || !userId) return;
-            const currentTime = Math.floor(player.currentTime);
-            const data = {
-                file_id: parseInt(fileId, 10),
-                user_id: parseInt(userId, 10),
-                position: currentTime,
-                is_finished: isFinished
-            };
-            try {
-                const response = await fetch(`${baseApiUrl}/api/update_progress`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
-                });
-                console.log('Progress update response:', await response.json());
-            } catch (error) {
-                console.error('Failed to send progress update:', error);
-            }
-        }
-
-        async function loadAndRenderTimecodes() {
-            if (!fileId) return;
-            try {
-                const response = await fetch(`${baseApiUrl}/api/get_timecodes/${fileId}`);
-                const timecodes = await response.json();
-                timecodesContainer.innerHTML = '';
-                if (Array.isArray(timecodes) && timecodes.length > 0) {
-                    timecodes.forEach(tc => {
-                        const button = document.createElement('button');
-                        button.className = 'timecode-button';
-                        button.innerText = `${tc.label} (${tc.time})`;
-                        button.onclick = () => {
-                            player.currentTime = timeStrToSeconds(tc.time);
-                            player.play();
-                        };
-                        timecodesContainer.appendChild(button);
-                    });
-                }
-            } catch (error) {
-                console.error("Failed to load timecodes:", error);
-            }
-        }
+        function formatTime(seconds) { /* ... */ }
+        function timeStrToSeconds(timeStr) { /* ... */ }
+        async function sendProgressUpdate(isFinished = false) { /* ... */ }
+        async function loadAndRenderTimecodes() { /* ... */ }
 
         // --- Главная функция, которая запускает все ---
         async function initializePlayer() {
@@ -136,6 +80,7 @@
                 const lastPosition = parseInt(localStorage.getItem(storageKey) || '0', 10);
                 timeDisplay.innerText = `${formatTime(lastPosition)} / ${formatTime(totalDuration)}`;
 
+                // --- ЛОГИКА ПРОГРЕССИВНОЙ ЗАГРУЗКИ ---
                 loaderDiv.innerText = "Загрузка аудио... 0%";
                 
                 const response = await fetch(fileUrl);
@@ -167,6 +112,7 @@
                 const objectUrl = URL.createObjectURL(blob);
                 
                 player.src = objectUrl;
+                player.style.display = 'block'; // Показываем плеер
                 player.controls = true;
                 loaderDiv.style.display = 'none';
                 
@@ -195,7 +141,7 @@
                 lastUpdateTime = now;
             }
         });
-
+        
         player.addEventListener('ended', () => {
             localStorage.setItem(storageKey, '0');
             sendProgressUpdate(true);
@@ -206,9 +152,62 @@
             tg.close();
         });
 
+        // --- Полные версии вспомогательных функций ---
+        function formatTime(seconds) {
+            if (isNaN(seconds) || seconds < 0) return "--:--";
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        }
+        function timeStrToSeconds(timeStr) {
+            const parts = timeStr.split(':').map(Number);
+            let seconds = 0;
+            if (parts.length === 3) seconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
+            else if (parts.length === 2) seconds = parts[0] * 60 + parts[1];
+            return seconds;
+        }
+        async function sendProgressUpdate(isFinished = false) {
+            if (!fileId || !userId) return;
+            const currentTime = Math.floor(player.currentTime);
+            const data = {
+                file_id: parseInt(fileId, 10),
+                user_id: parseInt(userId, 10),
+                position: currentTime,
+                is_finished: isFinished
+            };
+            try {
+                await fetch(`${baseApiUrl}/api/update_progress`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+            } catch (error) {
+                console.error('Failed to send progress update:', error);
+            }
+        }
+        async function loadAndRenderTimecodes() {
+            if (!fileId) return;
+            try {
+                const response = await fetch(`${baseApiUrl}/api/get_timecodes/${fileId}`);
+                const timecodes = await response.json();
+                timecodesContainer.innerHTML = '';
+                if (Array.isArray(timecodes) && timecodes.length > 0) {
+                    timecodes.forEach(tc => {
+                        const button = document.createElement('button');
+                        button.className = 'timecode-button';
+                        button.innerText = `${tc.label} (${tc.time})`;
+                        button.onclick = () => {
+                            player.currentTime = timeStrToSeconds(tc.time);
+                            player.play();
+                        };
+                        timecodesContainer.appendChild(button);
+                    });
+                }
+            } catch (error) {
+                console.error("Failed to load timecodes:", error);
+            }
+        }
     </script>
 
 </body>
 </html>
-
-

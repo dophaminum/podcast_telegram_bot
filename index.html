@@ -32,8 +32,7 @@
         </div>
     </div>
     
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+   <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script>
         const tg = window.Telegram.WebApp;
         tg.ready();
@@ -119,16 +118,19 @@
                     title: fileName,
                     artist: channelName,
                     album: 'Ваш Аудио-Бот',
+                    artwork: [
+                        { src: 'https://via.placeholder.com/512', sizes: '512x512', type: 'image/png' }
+                    ]
                 });
                 navigator.mediaSession.setActionHandler('play', () => player.play());
                 navigator.mediaSession.setActionHandler('pause', () => player.pause());
-                navigator.mediaSession.setActionHandler('seekbackward', (d) => { player.currentTime -= (d.seekOffset || 10); });
-                navigator.mediaSession.setActionHandler('seekforward', (d) => { player.currentTime += (d.seekOffset || 10); });
+                navigator.mediaSession.setActionHandler('seekbackward', (d) => { player.currentTime = Math.max(0, player.currentTime - (d.seekOffset || 10)); });
+                navigator.mediaSession.setActionHandler('seekforward', (d) => { player.currentTime = Math.min(player.duration, player.currentTime + (d.seekOffset || 10)); });
             }
         }
 
         // --- Главная функция, которая запускает все ---
-        async function initializePlayer() {
+        function initializePlayer() {
             try {
                 const urlParams = new URLSearchParams(window.location.search);
                 fileId = urlParams.get('file_id');
@@ -137,7 +139,9 @@
                 const fileName = urlParams.get('file_name') || 'Аудиозапись';
                 const totalDuration = parseInt(urlParams.get('duration') || '0', 10);
 
-                if (!fileUrl || !fileId || !userId) throw new Error("Ключевые параметры не указаны.");
+                if (!fileUrl || !fileId || !userId) {
+                    throw new Error("Ключевые параметры не указаны.");
+                }
                 
                 const urlObject = new URL(fileUrl);
                 baseApiUrl = `${urlObject.protocol}//${urlObject.host}`;
@@ -146,17 +150,15 @@
                 storageKey = `progress_${fileId}`;
                 const lastPosition = parseInt(localStorage.getItem(storageKey) || '0', 10);
                 
-                // Используем простую и надежную схему
                 player.src = fileUrl;
                 
                 timeDisplay.innerText = `${formatTime(lastPosition)} / ${formatTime(totalDuration)}`;
 
-                setupMediaSession(fileName);
                 loadAndRenderTimecodes();
 
                 player.addEventListener('loadedmetadata', () => {
                     player.currentTime = lastPosition;
-                    player.play();
+                    // Не запускаем play() автоматически, даем контроль пользователю
                 }, { once: true });
 
             } catch (e) {
@@ -169,6 +171,11 @@
         initializePlayer();
 
         // --- Навешиваем обработчики событий ---
+        player.addEventListener('play', () => {
+            // Активируем медиа-сессию при начале воспроизведения
+            setupMediaSession(titleDiv.innerText);
+        });
+
         player.addEventListener('timeupdate', () => {
             const currentTime = Math.floor(player.currentTime);
             localStorage.setItem(storageKey, currentTime);
@@ -182,6 +189,9 @@
         player.addEventListener('ended', () => {
             localStorage.setItem(storageKey, '0');
             sendProgressUpdate(true);
+            if ('mediaSession' in navigator) {
+                navigator.mediaSession.playbackState = "none";
+            }
         });
         
         closeButton.addEventListener('click', () => {
@@ -189,7 +199,7 @@
             tg.close();
         });
     </script>
-
 </body>
 </html>
+
 

@@ -115,7 +115,7 @@
         }
 
         // --- Главная функция, которая запускает все ---
-        async function initializePlayer() {
+         async function initializePlayer() {
             try {
                 if (!window.MediaSource) {
                     throw new Error('Ваш клиент Telegram не поддерживает Media Source Extensions.');
@@ -148,12 +148,10 @@
                         const response = await fetch(fileUrl);
                         if (!response.ok) throw new Error(`Ошибка сети: ${response.statusText}`);
 
-                        // --- ГЛАВНОЕ ИСПРАВЛЕНИЕ: Явно указываем кодек для mp4 ---
                         let mimeCodec = response.headers.get('Content-Type') || 'audio/mpeg';
                         if (mimeCodec.startsWith('audio/mp4')) {
                             mimeCodec = 'audio/mp4; codecs="mp4a.40.2"';
                         }
-                        // ---------------------------------------------------------
                         
                         if (!MediaSource.isTypeSupported(mimeCodec)) {
                             throw new Error(`Формат ${mimeCodec} не поддерживается для стриминга.`);
@@ -162,23 +160,30 @@
                         const sourceBuffer = mediaSource.addSourceBuffer(mimeCodec);
                         const reader = response.body.getReader();
 
-                        async function pump() {
+                        // --- НОВАЯ, БОЛЕЕ ПРОСТАЯ И НАДЕЖНАЯ ЛОГИКА "НАСОСА" ---
+                        let isDone = false;
+                        while (!isDone) {
+                            // Ждем, пока буфер не освободится, если он занят
                             if (sourceBuffer.updating) {
                                 await new Promise(resolve => sourceBuffer.addEventListener('updateend', resolve, { once: true }));
                             }
+                            
+                            // Читаем следующий кусочек
                             const { done, value } = await reader.read();
-                            if (done) {
-                                if (!sourceBuffer.updating) {
-                                    mediaSource.endOfStream();
-                                } else {
-                                    sourceBuffer.addEventListener('updateend', () => mediaSource.endOfStream(), { once: true });
-                                }
-                                return;
+                            isDone = done;
+
+                            if (value) {
+                                // Если есть данные, добавляем их в буфер
+                                sourceBuffer.appendBuffer(value);
                             }
-                            sourceBuffer.appendBuffer(value);
-                            pump();
                         }
-                        pump();
+                        
+                        // Когда цикл завершился, ждем последнего обновления и закрываем поток
+                        if (sourceBuffer.updating) {
+                            await new Promise(resolve => sourceBuffer.addEventListener('updateend', resolve, { once: true }));
+                        }
+                        mediaSource.endOfStream();
+                        // --- КОНЕЦ НОВОЙ ЛОГИКИ ---
 
                     } catch (e) {
                         console.error("Ошибка во время стриминга:", e);
@@ -230,6 +235,7 @@
     </script>
 </body>
 </html>
+
 
 
 

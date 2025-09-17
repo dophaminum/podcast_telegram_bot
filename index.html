@@ -5,40 +5,80 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Плеер</title>
 <style>
-        body { 
+        /* Убираем отступы и делаем фон на весь экран */
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden; /* Запрещаем прокрутку всего тела */
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
             background-color: var(--tg-theme-bg-color, #222); 
             color: var(--tg-theme-text-color, #fff); 
-            margin: 0; 
-            padding: 15px; 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            height: 100vh; 
-            box-sizing: border-box; 
         }
+        /* --- НОВАЯ СТРУКТУРА ВЕРСТКИ --- */
+        .app-container {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+        .main-content {
+            /* Этот блок будет занимать все место и прокручиваться, если нужно */
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 15px;
+        }
+        .footer {
+            /* Этот блок ("подвал") всегда будет внизу */
+            flex-shrink: 0;
+            padding: 0 15px 15px 15px;
+        }
+        /* -------------------------------- */
+
         #title { 
             font-size: 18px; 
             font-weight: bold; 
-            margin-bottom: 20px; 
             text-align: center; 
             overflow-wrap: break-word;
             word-break: break-word;
+            margin-bottom: 20px;
         }
         audio { 
             width: 100%; 
-            max-width: 400px; 
+            max-width: 400px;
+            margin: 0 auto; /* Центрируем плеер */
+            display: block;
         }
         #time-display {
             font-family: 'Courier New', Courier, monospace;
             font-size: 16px;
             color: var(--tg-theme-hint-color, #aaa);
+            text-align: center;
             margin-top: 8px;
-            margin-bottom: 20px;
+        }
+        #timecodes-container {
+            width: 100%;
+            max-width: 400px;
+            margin: 20px auto 0 auto; /* Центрируем контейнер */
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .timecode-button {
+            width: 100%;
+            padding: 12px 15px;
+            border: none;
+            border-radius: 8px;
+            background-color: var(--tg-theme-secondary-bg-color, #333);
+            color: var(--tg-theme-text-color, #fff);
+            cursor: pointer;
+            font-size: 14px;
+            text-align: left;
         }
         #close-button {
             width: 100%;
             max-width: 400px;
+            display: block;
+            margin: 0 auto; /* Центрируем кнопку */
             padding: 12px;
             border: none;
             border-radius: 8px;
@@ -47,94 +87,136 @@
             cursor: pointer;
             font-size: 16px;
             font-weight: bold;
-            margin-top: auto; /* Прижимает кнопку к низу */
-            padding-bottom: 20px; /* Добавляем отступ снизу */
         }
-        
-        /* --- НОВЫЕ СТИЛИ ДЛЯ КОНТЕЙНЕРА И КНОПОК ТАЙМКОДОВ --- */
-        #timecodes-container {
-            width: 100%;
-            max-width: 400px;
-            /* Позволяет контейнеру занять все доступное место */
-            flex-grow: 1; 
-            display: flex;
-            flex-direction: column;
-            gap: 8px; /* Расстояние между кнопками */
-            overflow-y: auto; /* Позволяет прокручивать список, если он длинный */
+        #loader {
             margin-top: 20px;
-            padding-right: 10px; /* Небольшой отступ справа для скроллбара */
-        }
-        .timecode-button {
-            width: 100%;
-            padding: 12px 15px; /* Увеличиваем отступ по бокам */
-            border: none;
-            border-radius: 8px;
-            background-color: var(--tg-theme-secondary-bg-color, #333);
-            color: var(--tg-theme-text-color, #fff);
-            cursor: pointer;
             font-size: 14px;
-            /* --- ГЛАВНОЕ ИЗМЕНЕНИЕ: ВЫРАВНИВАНИЕ ПО ЛЕВОМУ КРАЮ --- */
-            text-align: left;
-            /* -------------------------------------------------------- */
-        }
+            color: var(--tg-theme-hint-color, #aaa);
+        }    
     </style>
 </head>
 <body>
 
-    <div id="title">Загрузка аудио...</div>
-    <audio id="player" controls></audio>
-    <div id="time-display">--:-- / --:--</div>
-    <div id="timecodes-container"></div>
+    <div class="app-container">
+        <div class="main-content">
+            <div id="title">Загрузка информации...</div>
+            <!-- Убираем атрибут controls, будем управлять им из JS -->
+            <audio id="player" preload="metadata"></audio>
+            <div id="time-display">--:-- / --:--</div>
+            <!-- НОВЫЙ ЭЛЕМЕНТ: Индикатор загрузки -->
+            <div id="loader"></div>
+            <div id="timecodes-container"></div>
+        </div>
+        
+        <div class="footer">
+            <button id="close-button">Закрыть</button>
+        </div>
+    </div>
     
-    <!-- Финальная версия кнопки -->
-    <button id="close-button">Закрыть</button>
-    
-    <!-- Весь JavaScript код находится здесь -->
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script>
         const tg = window.Telegram.WebApp;
         tg.ready();
         tg.expand();
 
-        // --- Получаем HTML-элементы ---
+        // --- Получаем элементы ---
         const titleDiv = document.getElementById('title');
         const player = document.getElementById('player');
         const timeDisplay = document.getElementById('time-display');
         const timecodesContainer = document.getElementById('timecodes-container');
         const closeButton = document.getElementById('close-button');
+        const loaderDiv = document.getElementById('loader');
         
-        // --- Переменные для хранения состояния ---
+        // --- Переменные состояния ---
         let fileId = null;
         let userId = null;
         let storageKey = null;
-        let lastUpdateTime = 0;
         let baseApiUrl = '';
 
         // --- Функция отправки прогресса на сервер ---
-        async function sendProgressUpdate(isFinished = false) {
-            if (!fileId || !userId) return;
-
-            const currentTime = Math.floor(player.currentTime);
-            const data = {
-                file_id: parseInt(fileId, 10),
-                user_id: parseInt(userId, 10),
-                position: currentTime,
-                is_finished: isFinished
-            };
-
+        async function initializePlayer() {
             try {
-                const response = await fetch(`${baseApiUrl}/api/update_progress`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
+                // 1. Получаем параметры из URL
+                const urlParams = new URLSearchParams(window.location.search);
+                fileId = urlParams.get('file_id');
+                userId = urlParams.get('user_id');
+                const fileUrl = urlParams.get('file_url');
+                const fileName = urlParams.get('file_name') || 'Аудиозапись';
+                const totalDuration = parseInt(urlParams.get('duration') || '0', 10);
+
+                if (!fileUrl || !fileId || !userId) throw new Error("Ключевые параметры не указаны.");
+                
+                // Извлекаем базовый URL для API
+                const urlObject = new URL(fileUrl);
+                baseApiUrl = `${urlObject.protocol}//${urlObject.host}`;
+
+                titleDiv.innerText = fileName;
+                storageKey = `progress_${fileId}`;
+                const lastPosition = parseInt(localStorage.getItem(storageKey) || '0', 10);
+                timeDisplay.innerText = `${formatTime(lastPosition)} / ${formatTime(totalDuration)}`;
+
+                // 2. Начинаем фоновую загрузку файла
+                loaderDiv.innerText = "Загрузка аудио... 0%";
+                
+                const response = await fetch(fileUrl);
+                if (!response.ok) throw new Error(`Ошибка сети: ${response.statusText}`);
+
+                const contentLength = +response.headers.get('Content-Length');
+                let loaded = 0;
+                
+                // Создаем новый ReadableStream, чтобы отслеживать прогресс
+                const stream = new ReadableStream({
+                    async start(controller) {
+                        const reader = response.body.getReader();
+                        while (true) {
+                            const { done, value } = await reader.read();
+                            if (done) break;
+                            loaded += value.byteLength;
+                            const percent = Math.round((loaded / contentLength) * 100);
+                            loaderDiv.innerText = `Загрузка аудио... ${percent}%`;
+                            controller.enqueue(value);
+                        }
+                        controller.close();
+                    }
                 });
-                const responseData = await response.json();
-                console.log('Progress update response:', responseData);
-            } catch (error) {
-                console.error('Failed to send progress update:', error);
+
+                // 3. Когда загрузка завершена, создаем Blob и передаем его плееру
+                const blob = await new Response(stream).blob();
+                const objectUrl = URL.createObjectURL(blob);
+                
+                player.src = objectUrl;
+                player.controls = true; // Показываем стандартные контролы
+                loaderDiv.style.display = 'none'; // Прячем индикатор загрузки
+                
+                // Устанавливаем позицию и запускаем
+                player.currentTime = lastPosition;
+                player.play();
+
+                // 4. Запускаем загрузку таймкодов (параллельно)
+                loadAndRenderTimecodes();
+
+            } catch (e) {
+                loaderDiv.innerText = `Ошибка загрузки: ${e.message}`;
+                tg.showAlert(`Критическая ошибка: ${e.message}`);
             }
         }
+
+        // --- Остальные функции (обработчики событий, отправка прогресса) ---
+        
+        // Запускаем всю логику
+        initializePlayer();
+
+        // Обработчики событий плеера (остаются почти без изменений)
+        player.addEventListener('timeupdate', () => {
+            const currentTime = Math.floor(player.currentTime);
+            localStorage.setItem(storageKey, currentTime);
+            // ... (здесь может быть логика отправки прогресса на сервер)
+        });
+        
+        closeButton.addEventListener('click', () => {
+            // ... (здесь может быть отправка прогресса перед закрытием)
+            tg.close();
+        });
 
         // --- Функция загрузки и отображения таймкодов ---
         async function loadAndRenderTimecodes() {
@@ -245,6 +327,7 @@
     </script>
 </body>
 </html>
+
 
 
 

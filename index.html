@@ -12,7 +12,6 @@
         #title { font-size: 18px; font-weight: bold; text-align: center; overflow-wrap: break-word; word-break: break-word; margin-bottom: 20px; }
         audio { width: 100%; max-width: 400px; margin: 0 auto; display: block; }
         #time-display { font-family: 'Courier New', Courier, monospace; font-size: 16px; color: var(--tg-theme-hint-color, #aaa); text-align: center; margin-top: 8px; }
-        #loader { margin-top: 20px; font-size: 14px; color: var(--tg-theme-hint-color, #aaa); text-align: center; }
         #timecodes-container { width: 100%; max-width: 400px; margin: 20px auto 0 auto; display: flex; flex-direction: column; gap: 8px; }
         .timecode-button { width: 100%; padding: 12px 15px; border: none; border-radius: 8px; background-color: var(--tg-theme-secondary-bg-color, #333); color: var(--tg-theme-text-color, #fff); cursor: pointer; font-size: 14px; text-align: left; }
         #close-button { width: 100%; max-width: 400px; display: block; margin: 0 auto; padding: 12px; border: none; border-radius: 8px; background-color: var(--tg-theme-button-color, #007bff); color: var(--tg-theme-button-text-color, #fff); cursor: pointer; font-size: 16px; font-weight: bold; }
@@ -22,10 +21,13 @@
 
     <div class="app-container">
         <div class="main-content">
-            <div id="title">Загрузка информации...</div>
-            <audio id="player" preload="metadata"></audio>
+            <div id="title">Загрузка...</div>
+            
+            <!-- --- ГЛАВНОЕ УЛУЧШЕНИЕ ЗДЕСЬ --- -->
+            <audio id="player" controls preload="auto"></audio>
+            <!-- -------------------------------- -->
+
             <div id="time-display">--:-- / --:--</div>
-            <div id="loader"></div>
             <div id="timecodes-container"></div>
         </div>
         <div class="footer">
@@ -208,3 +210,4 @@
 
 </body>
 </html>
+

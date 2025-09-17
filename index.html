@@ -115,7 +115,7 @@
         }
 
         // --- Главная функция, которая запускает все ---
-         async function initializePlayer() {
+          async function initializePlayer() {
             try {
                 if (!window.MediaSource) {
                     throw new Error('Ваш клиент Telegram не поддерживает Media Source Extensions.');
@@ -142,7 +142,7 @@
                 const mediaSource = new MediaSource();
                 player.src = URL.createObjectURL(mediaSource);
                 
-                mediaSource.addEventListener('sourceopen', async () => {
+                const onSourceOpen = async () => {
                     loaderDiv.innerText = 'Загрузка аудио...';
                     try {
                         const response = await fetch(fileUrl);
@@ -160,30 +160,35 @@
                         const sourceBuffer = mediaSource.addSourceBuffer(mimeCodec);
                         const reader = response.body.getReader();
 
-                        // --- НОВАЯ, БОЛЕЕ ПРОСТАЯ И НАДЕЖНАЯ ЛОГИКА "НАСОСА" ---
-                        let isDone = false;
-                        while (!isDone) {
-                            // Ждем, пока буфер не освободится, если он занят
+                        // --- ФИНАЛЬНАЯ, САМАЯ НАДЕЖНАЯ ЛОГИКА "НАСОСА" ---
+                        const appendChunk = async (chunk) => {
+                            // Ждем, пока буфер освободится
                             if (sourceBuffer.updating) {
                                 await new Promise(resolve => sourceBuffer.addEventListener('updateend', resolve, { once: true }));
                             }
-                            
-                            // Читаем следующий кусочек
-                            const { done, value } = await reader.read();
-                            isDone = done;
-
-                            if (value) {
-                                // Если есть данные, добавляем их в буфер
-                                sourceBuffer.appendBuffer(value);
+                            // Добавляем, только если MediaSource все еще открыт
+                            if (mediaSource.readyState === 'open') {
+                                sourceBuffer.appendBuffer(chunk);
                             }
+                        };
+
+                        while (true) {
+                            const { done, value } = await reader.read();
+                            if (done) {
+                                break; // Выходим из цикла, когда данные закончились
+                            }
+                            await appendChunk(value); // "Скармливаем" кусочек
                         }
                         
                         // Когда цикл завершился, ждем последнего обновления и закрываем поток
                         if (sourceBuffer.updating) {
                             await new Promise(resolve => sourceBuffer.addEventListener('updateend', resolve, { once: true }));
                         }
-                        mediaSource.endOfStream();
-                        // --- КОНЕЦ НОВОЙ ЛОГИКИ ---
+                        // Закрываем, только если MediaSource все еще открыт
+                        if (mediaSource.readyState === 'open') {
+                            mediaSource.endOfStream();
+                        }
+                        // --- КОНЕЦ ФИНАЛЬНОЙ ЛОГИКИ ---
 
                     } catch (e) {
                         console.error("Ошибка во время стриминга:", e);
@@ -192,7 +197,9 @@
                             mediaSource.endOfStream('network');
                         }
                     }
-                }, { once: true });
+                };
+                
+                mediaSource.addEventListener('sourceopen', onSourceOpen, { once: true });
 
                 player.addEventListener('canplay', () => {
                     loaderDiv.style.display = 'none';
@@ -235,6 +242,7 @@
     </script>
 </body>
 </html>
+
 
 
 

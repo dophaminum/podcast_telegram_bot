@@ -33,12 +33,13 @@
         </div>
     </div>
     
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script>
         const tg = window.Telegram.WebApp;
         tg.ready();
         tg.expand();
 
+        // --- Получаем HTML-элементы ---
         const titleDiv = document.getElementById('title');
         const player = document.getElementById('player');
         const timeDisplay = document.getElementById('time-display');
@@ -46,6 +47,7 @@
         const closeButton = document.getElementById('close-button');
         const loaderDiv = document.getElementById('loader');
         
+        // --- Переменные состояния ---
         let fileId = null;
         let userId = null;
         let storageKey = null;
@@ -108,7 +110,7 @@
             }
         }
 
-        // --- Главная функция, которая запускает все ---
+        // --- Главная функция с финальной логикой стриминга ---
         async function initializePlayer() {
             try {
                 if (!window.MediaSource) {
@@ -153,35 +155,34 @@
 
                         const sourceBuffer = mediaSource.addSourceBuffer(mimeCodec);
                         const reader = response.body.getReader();
-                        const CHUNK_SIZE = 1024 * 1024; // 1 MB
 
-                        const appendChunk = async (chunk) => {
-                            if (sourceBuffer.updating || mediaSource.readyState !== 'open') {
-                                return;
-                            }
-                            try {
-                                sourceBuffer.appendBuffer(chunk);
-                                await new Promise(resolve => sourceBuffer.addEventListener('updateend', resolve, { once: true }));
-                            } catch (e) {
-                                console.error("Ошибка при добавлении чанка:", e);
-                                // Если ошибка - прекращаем стриминг
-                                if (mediaSource.readyState === 'open') mediaSource.endOfStream('decode');
-                            }
-                        };
-
+                        // --- ФИНАЛЬНАЯ, СТРОГО ПОСЛЕДОВАТЕЛЬНАЯ ЛОГИКА "НАСОСА" ---
                         while (true) {
+                            // Сначала читаем следующий кусочек из сети
                             const { done, value } = await reader.read();
-                            if (done) break;
                             
-                            for (let i = 0; i < value.length; i += CHUNK_SIZE) {
-                                const chunk = value.subarray(i, i + CHUNK_SIZE);
-                                await appendChunk(chunk);
+                            // Если данные закончились, выходим из цикла
+                            if (done) {
+                                break;
                             }
+                            
+                            // Ждем, пока буфер не освободится, если он занят
+                            if (sourceBuffer.updating) {
+                                await new Promise(resolve => sourceBuffer.addEventListener('updateend', resolve, { once: true }));
+                            }
+                            
+                            // И только теперь добавляем полученный кусок
+                            sourceBuffer.appendBuffer(value);
                         }
                         
-                        if (mediaSource.readyState === 'open' && !sourceBuffer.updating) {
+                        // Когда цикл завершился, ждем последнего обновления и корректно закрываем поток
+                        if (sourceBuffer.updating) {
+                            await new Promise(resolve => sourceBuffer.addEventListener('updateend', resolve, { once: true }));
+                        }
+                        if (mediaSource.readyState === 'open') {
                             mediaSource.endOfStream();
                         }
+                        // --- КОНЕЦ ФИНАЛЬНОЙ ЛОГИКИ ---
 
                     } catch (e) {
                         console.error("Ошибка во время стриминга:", e);
@@ -231,6 +232,6 @@
             tg.close();
         });
     </script>
-
 </body>
 </html>
+

@@ -10,7 +10,7 @@
         .main-content { flex-grow: 1; overflow-y: auto; padding: 15px; text-align: center; }
         .footer { flex-shrink: 0; padding: 0 15px 15px 15px; }
         #title { font-size: 18px; font-weight: bold; overflow-wrap: break-word; word-break: break-word; margin-bottom: 20px; }
-        audio { width: 100%; max-width: 400px; margin: 0 auto; display: none; } /* Плеер изначально скрыт */
+        audio { width: 100%; max-width: 400px; margin: 0 auto; display: block; }
         #time-display { font-family: 'Courier New', Courier, monospace; font-size: 16px; color: var(--tg-theme-hint-color, #aaa); margin-top: 8px; }
         #loader { margin-top: 20px; font-size: 14px; color: var(--tg-theme-hint-color, #aaa); }
         #timecodes-container { width: 100%; max-width: 400px; margin: 20px auto 0 auto; display: flex; flex-direction: column; gap: 8px; }
@@ -23,7 +23,7 @@
     <div class="app-container">
         <div class="main-content">
             <div id="title">Загрузка информации...</div>
-            <audio id="player" preload="metadata"></audio>
+            <audio id="player" controls preload="metadata"></audio>
             <div id="time-display">--:-- / --:--</div>
             <div id="loader"></div>
             <div id="timecodes-container"></div>
@@ -34,13 +34,11 @@
     </div>
     
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script>
         const tg = window.Telegram.WebApp;
         tg.ready();
         tg.expand();
 
-        // --- Получаем HTML-элементы ---
         const titleDiv = document.getElementById('title');
         const player = document.getElementById('player');
         const timeDisplay = document.getElementById('time-display');
@@ -48,7 +46,6 @@
         const closeButton = document.getElementById('close-button');
         const loaderDiv = document.getElementById('loader');
         
-        // --- Переменные состояния ---
         let fileId = null;
         let userId = null;
         let storageKey = null;
@@ -62,7 +59,6 @@
             const secs = Math.floor(seconds % 60);
             return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
         }
-
         function timeStrToSeconds(timeStr) {
             const parts = timeStr.split(':').map(Number);
             let seconds = 0;
@@ -70,7 +66,6 @@
             else if (parts.length === 2) seconds = parts[0] * 60 + parts[1];
             return seconds;
         }
-
         async function sendProgressUpdate(isFinished = false) {
             if (!fileId || !userId) return;
             const currentTime = Math.floor(player.currentTime);
@@ -90,7 +85,6 @@
                 console.error('Failed to send progress update:', error);
             }
         }
-
         async function loadAndRenderTimecodes() {
             if (!fileId) return;
             try {
@@ -115,7 +109,7 @@
         }
 
         // --- Главная функция, которая запускает все ---
-          async function initializePlayer() {
+        async function initializePlayer() {
             try {
                 if (!window.MediaSource) {
                     throw new Error('Ваш клиент Telegram не поддерживает Media Source Extensions.');
@@ -142,7 +136,7 @@
                 const mediaSource = new MediaSource();
                 player.src = URL.createObjectURL(mediaSource);
                 
-                const onSourceOpen = async () => {
+                mediaSource.addEventListener('sourceopen', async () => {
                     loaderDiv.innerText = 'Загрузка аудио...';
                     try {
                         const response = await fetch(fileUrl);
@@ -159,36 +153,35 @@
 
                         const sourceBuffer = mediaSource.addSourceBuffer(mimeCodec);
                         const reader = response.body.getReader();
+                        const CHUNK_SIZE = 1024 * 1024; // 1 MB
 
-                        // --- ФИНАЛЬНАЯ, САМАЯ НАДЕЖНАЯ ЛОГИКА "НАСОСА" ---
                         const appendChunk = async (chunk) => {
-                            // Ждем, пока буфер освободится
-                            if (sourceBuffer.updating) {
-                                await new Promise(resolve => sourceBuffer.addEventListener('updateend', resolve, { once: true }));
+                            if (sourceBuffer.updating || mediaSource.readyState !== 'open') {
+                                return;
                             }
-                            // Добавляем, только если MediaSource все еще открыт
-                            if (mediaSource.readyState === 'open') {
+                            try {
                                 sourceBuffer.appendBuffer(chunk);
+                                await new Promise(resolve => sourceBuffer.addEventListener('updateend', resolve, { once: true }));
+                            } catch (e) {
+                                console.error("Ошибка при добавлении чанка:", e);
+                                // Если ошибка - прекращаем стриминг
+                                if (mediaSource.readyState === 'open') mediaSource.endOfStream('decode');
                             }
                         };
 
                         while (true) {
                             const { done, value } = await reader.read();
-                            if (done) {
-                                break; // Выходим из цикла, когда данные закончились
+                            if (done) break;
+                            
+                            for (let i = 0; i < value.length; i += CHUNK_SIZE) {
+                                const chunk = value.subarray(i, i + CHUNK_SIZE);
+                                await appendChunk(chunk);
                             }
-                            await appendChunk(value); // "Скармливаем" кусочек
                         }
                         
-                        // Когда цикл завершился, ждем последнего обновления и закрываем поток
-                        if (sourceBuffer.updating) {
-                            await new Promise(resolve => sourceBuffer.addEventListener('updateend', resolve, { once: true }));
-                        }
-                        // Закрываем, только если MediaSource все еще открыт
-                        if (mediaSource.readyState === 'open') {
+                        if (mediaSource.readyState === 'open' && !sourceBuffer.updating) {
                             mediaSource.endOfStream();
                         }
-                        // --- КОНЕЦ ФИНАЛЬНОЙ ЛОГИКИ ---
 
                     } catch (e) {
                         console.error("Ошибка во время стриминга:", e);
@@ -197,9 +190,7 @@
                             mediaSource.endOfStream('network');
                         }
                     }
-                };
-                
-                mediaSource.addEventListener('sourceopen', onSourceOpen, { once: true });
+                }, { once: true });
 
                 player.addEventListener('canplay', () => {
                     loaderDiv.style.display = 'none';
@@ -240,10 +231,6 @@
             tg.close();
         });
     </script>
+
 </body>
 </html>
-
-
-
-
-

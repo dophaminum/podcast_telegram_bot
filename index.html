@@ -61,8 +61,14 @@
         async function loadAndRenderTimecodes() { /* ... */ }
 
         // --- Главная функция, которая запускает все ---
-        async function initializePlayer() {
+                async function initializePlayer() {
             try {
+                // Проверяем, поддерживает ли браузер MSE
+                if (!window.MediaSource) {
+                    throw new Error('Ваш клиент Telegram не поддерживает Media Source Extensions. Невозможно запустить стриминг.');
+                }
+
+                // 1. Получаем параметры из URL (без изменений)
                 const urlParams = new URLSearchParams(window.location.search);
                 fileId = urlParams.get('file_id');
                 userId = urlParams.get('user_id');
@@ -75,54 +81,71 @@
                 const urlObject = new URL(fileUrl);
                 baseApiUrl = `${urlObject.protocol}//${urlObject.host}`;
 
-                titleDiv.innerText = fileName;
+                document.getElementById('title').innerText = fileName;
                 storageKey = `progress_${fileId}`;
                 const lastPosition = parseInt(localStorage.getItem(storageKey) || '0', 10);
-                timeDisplay.innerText = `${formatTime(lastPosition)} / ${formatTime(totalDuration)}`;
+                document.getElementById('time-display').innerText = `${formatTime(lastPosition)} / ${formatTime(totalDuration)}`;
+                document.getElementById('loader').innerText = 'Подготовка к воспроизведению...';
 
-                // --- ЛОГИКА ПРОГРЕССИВНОЙ ЗАГРУЗКИ ---
-                loaderDiv.innerText = "Загрузка аудио... 0%";
+                // 2. Создаем MediaSource и привязываем к плееру
+                const mediaSource = new MediaSource();
+                player.src = URL.createObjectURL(mediaSource);
                 
-                const response = await fetch(fileUrl);
-                if (!response.ok) throw new Error(`Ошибка сети: ${response.statusText}`);
+                // 3. Ждем, пока MediaSource будет готов принимать данные
+                mediaSource.addEventListener('sourceopen', async () => {
+                    document.getElementById('loader').innerText = 'Загрузка аудио...';
+                    try {
+                        // 4. Начинаем загрузку файла
+                        const response = await fetch(fileUrl);
+                        if (!response.ok) throw new Error(`Ошибка сети: ${response.statusText}`);
 
-                const contentLength = +response.headers.get('Content-Length');
-                let loaded = 0;
-                
-                const stream = new ReadableStream({
-                    async start(controller) {
+                        const mimeCodec = response.headers.get('Content-Type') || 'audio/mpeg';
+                        if (!MediaSource.isTypeSupported(mimeCodec)) {
+                            throw new Error(`Формат ${mimeCodec} не поддерживается для стриминга.`);
+                        }
+
+                        // 5. Создаем SourceBuffer, который будет принимать "кусочки" аудио
+                        const sourceBuffer = mediaSource.addSourceBuffer(mimeCodec);
                         const reader = response.body.getReader();
+
+                        // 6. Начинаем "перекачивать" данные из сети в буфер
                         while (true) {
                             const { done, value } = await reader.read();
-                            if (done) break;
-                            loaded += value.byteLength;
-                            if (contentLength > 0) {
-                                const percent = Math.round((loaded / contentLength) * 100);
-                                loaderDiv.innerText = `Загрузка аудио... ${percent}%`;
-                            } else {
-                                loaderDiv.innerText = `Загружено ${(loaded / 1024 / 1024).toFixed(2)} MB`;
+                            if (done) {
+                                if (!sourceBuffer.updating) {
+                                    mediaSource.endOfStream();
+                                } else {
+                                    sourceBuffer.addEventListener('updateend', () => mediaSource.endOfStream(), { once: true });
+                                }
+                                break;
                             }
-                            controller.enqueue(value);
+                            
+                            // "Скармливаем" полученный кусочек в буфер
+                            if (sourceBuffer.updating) {
+                                await new Promise(resolve => sourceBuffer.addEventListener('updateend', resolve, { once: true }));
+                            }
+                            sourceBuffer.appendBuffer(value);
                         }
-                        controller.close();
+                    } catch (e) {
+                        console.error("Ошибка во время стриминга:", e);
+                        document.getElementById('loader').innerText = `Ошибка стриминга: ${e.message}`;
+                        if (mediaSource.readyState === "open") {
+                            mediaSource.endOfStream('network');
+                        }
                     }
-                });
+                }, { once: true });
 
-                const blob = await new Response(stream).blob();
-                const objectUrl = URL.createObjectURL(blob);
-                
-                player.src = objectUrl;
-                player.style.display = 'block'; // Показываем плеер
-                player.controls = true;
-                loaderDiv.style.display = 'none';
-                
-                player.currentTime = lastPosition;
-                player.play();
+                // Устанавливаем позицию, как только плеер будет готов
+                player.addEventListener('canplay', () => {
+                    document.getElementById('loader').style.display = 'none'; // Прячем индикатор загрузки
+                    player.currentTime = lastPosition;
+                    player.play();
+                }, { once: true });
 
                 loadAndRenderTimecodes();
 
             } catch (e) {
-                loaderDiv.innerText = `Ошибка загрузки: ${e.message}`;
+                document.getElementById('loader').innerText = `Ошибка инициализации: ${e.message}`;
                 tg.showAlert(`Критическая ошибка: ${e.message}`);
             }
         }
@@ -211,3 +234,4 @@
 
 </body>
 </html>
+

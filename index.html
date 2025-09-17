@@ -12,7 +12,6 @@
         #title { font-size: 18px; font-weight: bold; overflow-wrap: break-word; word-break: break-word; margin-bottom: 20px; }
         audio { width: 100%; max-width: 400px; margin: 0 auto; display: block; }
         #time-display { font-family: 'Courier New', Courier, monospace; font-size: 16px; color: var(--tg-theme-hint-color, #aaa); margin-top: 8px; }
-        #loader { margin-top: 20px; font-size: 14px; color: var(--tg-theme-hint-color, #aaa); }
         #timecodes-container { width: 100%; max-width: 400px; margin: 20px auto 0 auto; display: flex; flex-direction: column; gap: 8px; }
         .timecode-button { width: 100%; padding: 12px 15px; border: none; border-radius: 8px; background-color: var(--tg-theme-secondary-bg-color, #333); color: var(--tg-theme-text-color, #fff); cursor: pointer; font-size: 14px; text-align: left; }
         #close-button { width: 100%; max-width: 400px; display: block; margin: 0 auto; padding: 12px; border: none; border-radius: 8px; background-color: var(--tg-theme-button-color, #007bff); color: var(--tg-theme-button-text-color, #fff); cursor: pointer; font-size: 16px; font-weight: bold; }
@@ -22,10 +21,10 @@
 
     <div class="app-container">
         <div class="main-content">
-            <div id="title">Загрузка информации...</div>
-            <audio id="player" controls preload="metadata"></audio>
+            <div id="title">Загрузка...</div>
+            <!-- УЛУЧШЕНИЕ: Добавляем preload="auto" для лучшей буферизации -->
+            <audio id="player" controls preload="auto"></audio>
             <div id="time-display">--:-- / --:--</div>
-            <div id="loader"></div>
             <div id="timecodes-container"></div>
         </div>
         <div class="footer">
@@ -33,7 +32,7 @@
         </div>
     </div>
     
-     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script>
         const tg = window.Telegram.WebApp;
         tg.ready();
@@ -45,7 +44,6 @@
         const timeDisplay = document.getElementById('time-display');
         const timecodesContainer = document.getElementById('timecodes-container');
         const closeButton = document.getElementById('close-button');
-        const loaderDiv = document.getElementById('loader');
         
         // --- Переменные состояния ---
         let fileId = null;
@@ -54,7 +52,7 @@
         let baseApiUrl = '';
         let lastUpdateTime = 0;
 
-        // --- Вспомогательные функции ---
+        // --- Вспомогательные функции (остаются без изменений) ---
         function formatTime(seconds) {
             if (isNaN(seconds) || seconds < 0) return "--:--";
             const mins = Math.floor(seconds / 60);
@@ -110,128 +108,72 @@
             }
         }
 
-        // --- Главная функция с финальной логикой стриминга ---
-        async function initializePlayer() {
-            try {
-                if (!window.MediaSource) {
-                    throw new Error('Ваш клиент Telegram не поддерживает Media Source Extensions.');
+        // --- ОСНОВНАЯ ЛОГИКА (ПРОСТАЯ И НАДЕЖНАЯ) ---
+        try {
+            const urlParams = new URLSearchParams(window.location.search);
+            fileId = urlParams.get('file_id');
+            userId = urlParams.get('user_id');
+            const fileUrl = urlParams.get('file_url');
+            const fileName = urlParams.get('file_name') || 'Аудиозапись';
+            const totalDuration = parseInt(urlParams.get('duration') || '0', 10);
+
+            if (!fileUrl || !fileId || !userId) {
+                throw new Error("Ключевые параметры не указаны.");
+            }
+            
+            const urlObject = new URL(fileUrl);
+            baseApiUrl = `${urlObject.protocol}//${urlObject.host}`;
+
+            titleDiv.innerText = fileName;
+            storageKey = `progress_${fileId}`;
+            const lastPosition = parseInt(localStorage.getItem(storageKey) || '0', 10);
+            
+            // Устанавливаем источник аудио напрямую
+            player.src = fileUrl;
+            
+            // Отображаем время
+            timeDisplay.innerText = `${formatTime(lastPosition)} / ${formatTime(totalDuration)}`;
+
+            // Запускаем загрузку таймкодов
+            loadAndRenderTimecodes();
+
+            // --- ОБРАБОТЧИКИ СОБЫТИЙ ---
+            // Используем 'loadedmetadata', чтобы установить позицию, как только плеер узнает длительность
+            player.addEventListener('loadedmetadata', () => {
+                player.currentTime = lastPosition;
+                player.play();
+            }, { once: true });
+
+            player.addEventListener('timeupdate', () => {
+                const currentTime = Math.floor(player.currentTime);
+                timeDisplay.innerText = `${formatTime(currentTime)} / ${formatTime(totalDuration)}`;
+                localStorage.setItem(storageKey, currentTime);
+                
+                const now = Date.now();
+                if (now - lastUpdateTime > 5000) {
+                    sendProgressUpdate();
+                    lastUpdateTime = now;
                 }
+            });
 
-                const urlParams = new URLSearchParams(window.location.search);
-                fileId = urlParams.get('file_id');
-                userId = urlParams.get('user_id');
-                const fileUrl = urlParams.get('file_url');
-                const fileName = urlParams.get('file_name') || 'Аудиозапись';
-                const totalDuration = parseInt(urlParams.get('duration') || '0', 10);
+            player.addEventListener('ended', () => {
+                localStorage.setItem(storageKey, '0');
+                sendProgressUpdate(true);
+            });
 
-                if (!fileUrl || !fileId || !userId) throw new Error("Ключевые параметры не указаны.");
-                
-                const urlObject = new URL(fileUrl);
-                baseApiUrl = `${urlObject.protocol}//${urlObject.host}`;
-
-                titleDiv.innerText = fileName;
-                storageKey = `progress_${fileId}`;
-                const lastPosition = parseInt(localStorage.getItem(storageKey) || '0', 10);
-                timeDisplay.innerText = `${formatTime(lastPosition)} / ${formatTime(totalDuration)}`;
-                loaderDiv.innerText = 'Подготовка к воспроизведению...';
-
-                const mediaSource = new MediaSource();
-                player.src = URL.createObjectURL(mediaSource);
-                
-                mediaSource.addEventListener('sourceopen', async () => {
-                    loaderDiv.innerText = 'Загрузка аудио...';
-                    try {
-                        const response = await fetch(fileUrl);
-                        if (!response.ok) throw new Error(`Ошибка сети: ${response.statusText}`);
-
-                        let mimeCodec = response.headers.get('Content-Type') || 'audio/mpeg';
-                        if (mimeCodec.startsWith('audio/mp4')) {
-                            mimeCodec = 'audio/mp4; codecs="mp4a.40.2"';
-                        }
-                        
-                        if (!MediaSource.isTypeSupported(mimeCodec)) {
-                            throw new Error(`Формат ${mimeCodec} не поддерживается для стриминга.`);
-                        }
-
-                        const sourceBuffer = mediaSource.addSourceBuffer(mimeCodec);
-                        const reader = response.body.getReader();
-
-                        // --- ФИНАЛЬНАЯ, СТРОГО ПОСЛЕДОВАТЕЛЬНАЯ ЛОГИКА "НАСОСА" ---
-                        while (true) {
-                            // Сначала читаем следующий кусочек из сети
-                            const { done, value } = await reader.read();
-                            
-                            // Если данные закончились, выходим из цикла
-                            if (done) {
-                                break;
-                            }
-                            
-                            // Ждем, пока буфер не освободится, если он занят
-                            if (sourceBuffer.updating) {
-                                await new Promise(resolve => sourceBuffer.addEventListener('updateend', resolve, { once: true }));
-                            }
-                            
-                            // И только теперь добавляем полученный кусок
-                            sourceBuffer.appendBuffer(value);
-                        }
-                        
-                        // Когда цикл завершился, ждем последнего обновления и корректно закрываем поток
-                        if (sourceBuffer.updating) {
-                            await new Promise(resolve => sourceBuffer.addEventListener('updateend', resolve, { once: true }));
-                        }
-                        if (mediaSource.readyState === 'open') {
-                            mediaSource.endOfStream();
-                        }
-                        // --- КОНЕЦ ФИНАЛЬНОЙ ЛОГИКИ ---
-
-                    } catch (e) {
-                        console.error("Ошибка во время стриминга:", e);
-                        loaderDiv.innerText = `Ошибка стриминга: ${e.message}`;
-                        if (mediaSource.readyState === "open") {
-                            mediaSource.endOfStream('network');
-                        }
-                    }
-                }, { once: true });
-
-                player.addEventListener('canplay', () => {
-                    loaderDiv.style.display = 'none';
-                    player.controls = true;
-                    player.currentTime = lastPosition;
-                    player.play();
-                }, { once: true });
-
-                loadAndRenderTimecodes();
-
-            } catch (e) {
-                loaderDiv.innerText = `Ошибка инициализации: ${e.message}`;
-                tg.showAlert(`Критическая ошибка: ${e.message}`);
-            }
-        }
-
-        // --- Запускаем всю логику ---
-        initializePlayer();
-
-        // --- Навешиваем обработчики событий ---
-        player.addEventListener('timeupdate', () => {
-            const currentTime = Math.floor(player.currentTime);
-            localStorage.setItem(storageKey, currentTime);
-            const now = Date.now();
-            if (now - lastUpdateTime > 5000) {
+            player.addEventListener('error', () => {
+                tg.showAlert('Ошибка загрузки аудио. Убедитесь, что сервер запущен и доступен.');
+            });
+            
+            closeButton.addEventListener('click', () => {
                 sendProgressUpdate();
-                lastUpdateTime = now;
-            }
-        });
+                tg.close();
+            });
 
-        player.addEventListener('ended', () => {
-            localStorage.setItem(storageKey, '0');
-            sendProgressUpdate(true);
-        });
-        
-        closeButton.addEventListener('click', () => {
-            sendProgressUpdate();
-            tg.close();
-        });
+        } catch (e) {
+            tg.showAlert(`Критическая ошибка: ${e.message}`);
+        }
     </script>
+
 </body>
 </html>
-

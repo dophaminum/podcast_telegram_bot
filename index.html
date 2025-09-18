@@ -81,7 +81,17 @@
         const tg = window.Telegram.WebApp;
         tg.ready();
         tg.expand();
-
+// --- Проверяем режим запуска PWA и скрываем кнопки ---
+            // window.navigator.standalone - для Safari на iOS
+            if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true) {
+                console.log("Приложение запущено в режиме PWA. Скрываем футер.");
+                const footer = document.querySelector('.footer');
+                if (footer) {
+                    footer.style.display = 'none';
+                }
+            } else {
+                console.log("Приложение запущено в браузере или WebView.");
+            }
         const noSleep = new NoSleep();
 
         // --- Получаем HTML-элементы ---
@@ -251,6 +261,7 @@
     </script>
 </body>
 </html>
+
 
 
 

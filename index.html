@@ -18,6 +18,31 @@
         #timecodes-container { width: 100%; max-width: 400px; margin: 20px auto 0 auto; display: flex; flex-direction: column; gap: 8px; }
         .timecode-button { width: 100%; padding: 12px 15px; border: none; border-radius: 8px; background-color: var(--tg-theme-secondary-bg-color, #333); color: var(--tg-theme-text-color, #fff); cursor: pointer; font-size: 14px; text-align: left; }
         #close-button { width: 100%; max-width: 400px; display: block; margin: 0 auto; padding: 12px; border: none; border-radius: 8px; background-color: var(--tg-theme-button-color, #007bff); color: var(--tg-theme-button-text-color, #fff); cursor: pointer; font-size: 16px; font-weight: bold; }
+        .footer {
+            display: flex; /* Включаем flex-контейнер */
+            gap: 10px; /* Расстояние между кнопками */
+            padding: 0 15px 15px 15px;
+        }
+        /* Общий стиль для кнопок в подвале */
+        .footer button {
+            flex-grow: 1; /* Кнопки займут равное пространство */
+            width: 50%;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+        }
+        #close-button {
+            background-color: var(--tg-theme-button-color, #007bff);
+            color: var(--tg-theme-button-text-color, #fff);
+        }
+        /* Стиль для новой кнопки */
+        #open-in-browser-button {
+            background-color: var(--tg-theme-secondary-bg-color, #555);
+            color: var(--tg-theme-text-color, #fff);
+        }
     </style>
 </head>
 <body>
@@ -31,6 +56,9 @@
             <div id="timecodes-container"></div>
         </div>
         <div class="footer">
+            <!-- НОВАЯ КНОПКА -->
+            <button id="open-in-browser-button">Открыть как плеер</button>
+            
             <button id="close-button">Закрыть</button>
         </div>
     </div>
@@ -40,17 +68,20 @@
         // --- PWA УЛУЧШЕНИЕ: РЕГИСТРАЦИЯ SERVICE WORKER ---
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js').then(registration => {
+                // Убедимся, что мы регистрируем sw.js из корня сайта
+                navigator.serviceWorker.register('./sw.js').then(registration => {
                     console.log('ServiceWorker зарегистрирован: ', registration);
                 }).catch(registrationError => {
                     console.log('Ошибка регистрации ServiceWorker: ', registrationError);
                 });
             });
         }
-        // -------------------------------------------------        
+        // -------------------------------------------------
+
         const tg = window.Telegram.WebApp;
         tg.ready();
         tg.expand();
+
         const noSleep = new NoSleep();
 
         // --- Получаем HTML-элементы ---
@@ -59,6 +90,7 @@
         const timeDisplay = document.getElementById('time-display');
         const timecodesContainer = document.getElementById('timecodes-container');
         const closeButton = document.getElementById('close-button');
+        const openInBrowserButton = document.getElementById('open-in-browser-button'); // Находим новую кнопку
         const loaderDiv = document.getElementById('loader');
         
         // --- Переменные состояния ---
@@ -134,7 +166,6 @@
                     artist: channelName,
                     album: 'Ваш Аудио-Бот',
                     artwork: [
-                        // --- ИСПРАВЛЕНИЕ: Используем надежный сервис для обложки ---
                         { src: 'https://dummyimage.com/512x512/222/fff.png&text=Audio', sizes: '512x512', type: 'image/png' }
                     ]
                 });
@@ -176,8 +207,12 @@
             }, { once: true });
 
             player.addEventListener('play', () => {
-                // Активируем медиа-сессию при начале воспроизведения
+                noSleep.enable();
                 setupMediaSession(fileName);
+            });
+
+            player.addEventListener('pause', () => {
+                noSleep.disable();
             });
 
             player.addEventListener('timeupdate', () => {
@@ -191,6 +226,7 @@
             });
 
             player.addEventListener('ended', () => {
+                noSleep.disable();
                 localStorage.setItem(storageKey, '0');
                 sendProgressUpdate(true);
                 if ('mediaSession' in navigator) {
@@ -203,12 +239,19 @@
                 tg.close();
             });
 
+            // --- НОВЫЙ ОБРАБОТЧИК ДЛЯ КНОПКИ "ОТКРЫТЬ В БРАУЗЕРЕ" ---
+            openInBrowserButton.addEventListener('click', () => {
+                // window.location.href - это текущий URL страницы со всеми параметрами
+                tg.openLink(window.location.href);
+            });
+
         } catch (e) {
             tg.showAlert(`Критическая ошибка: ${e.message}`);
         }
     </script>
 </body>
 </html>
+
 
 
 

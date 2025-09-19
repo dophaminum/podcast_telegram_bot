@@ -198,7 +198,12 @@
             if (!fileUrl || !fileId || !userId) {
                 throw new Error("Ключевые параметры не указаны.");
             }
+            const isUserFile = fileUrl.includes('/users/');
+            // Формируем ключ для localStorage с префиксом
+            storageKey = isUserFile ? `progress_u${fileId}` : `progress_${fileId}`;
+            // -------------------------------------------------------------
             
+            const lastPosition = parseInt(localStorage.getItem(storageKey) || '0', 10);
             const urlObject = new URL(fileUrl);
             baseApiUrl = `${urlObject.protocol}//${urlObject.host}`;
 
@@ -261,6 +266,7 @@
     </script>
 </body>
 </html>
+
 
 
 

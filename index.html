@@ -209,7 +209,7 @@
 
             titleDiv.innerText = fileName;
             storageKey = `progress_${fileId}`;
-            const lastPosition = parseInt(localStorage.getItem(storageKey) || '0', 10);
+        
             
             player.src = fileUrl;
             timeDisplay.innerText = `${formatTime(lastPosition)} / ${formatTime(totalDuration)}`;
@@ -266,6 +266,7 @@
     </script>
 </body>
 </html>
+
 
 
 
